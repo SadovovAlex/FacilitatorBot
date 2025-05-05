@@ -18,6 +18,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+const CHECK_HOURS = -6
+
 // Config структура для конфигурации бота
 type Config struct {
 	TelegramToken string
@@ -319,7 +321,7 @@ func (b *Bot) saveMessage(chatID, userID int64, text string, timestamp int64) er
 
 // getRecentMessages получает сообщения за последние 6 часов
 func (b *Bot) getRecentMessages(chatID int64, limit int) ([]DBMessage, error) {
-	sixHoursAgo := time.Now().Add(-6 * time.Hour).Unix()
+	sixHoursAgo := time.Now().Add(CHECK_HOURS * time.Hour).Unix()
 
 	// Если лимит не задан, устанавливаем его в 0, чтобы получить все сообщения
 	if limit == 0 {
@@ -487,7 +489,9 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 	}
 
 	if len(messages) == 0 {
-		fmt.Printf("Нет сообщений за последние 6 часов")
+		message := fmt.Sprintf("Нет сообщений за последние %v часов, я похоже спал =)", CHECK_HOURS*-1)
+		fmt.Println(message)
+		b.sendMessage(chatID, message)
 		return
 	}
 
