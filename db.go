@@ -74,12 +74,26 @@ func (b *Bot) saveUser(user *tgbotapi.User) error {
 		return nil
 	}
 
-	_, err := b.db.Exec(`
+	result, err := b.db.Exec(`
 		INSERT OR IGNORE INTO users (id, username, first_name, last_name) 
 		VALUES (?, ?, ?, ?)`,
 		user.ID, user.UserName, user.FirstName, user.LastName)
+	if err != nil {
+		return err
+	}
 
-	return err
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected > 0 {
+		fmt.Printf("Saved user: ID=%d, Username=%s, FirstName=%s, LastName=%s", user.ID, user.UserName, user.FirstName, user.LastName)
+	} else {
+		fmt.Printf("User already exists: ID=%d, Username=%s, FirstName=%s, LastName=%s", user.ID, user.UserName, user.FirstName, user.LastName)
+	}
+
+	return nil
 }
 
 // saveMessage сохраняет сообщение в БД
