@@ -27,3 +27,4 @@ go.work.sum
 # db
 telegram_bot.db
 to-do.txt
+*.log

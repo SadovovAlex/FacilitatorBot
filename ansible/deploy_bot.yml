@@ -1,0 +1,21 @@
+- hosts: all
+  tasks:
+    - name: Clone bot repository
+      git:
+        repo: https://github.com/SadovovAlex/FacilitatorBot.git
+        dest: /opt/FacilitatorBot/repo
+        force: yes
+
+    - name: Build bot
+      command: go build -o /opt/FacilitatorBot/bin/facilitator-bot
+      args:
+        chdir: /opt/FacilitatorBot/repo
+
+    - name: Run bot
+      command: /opt/FacilitatorBot/bin/facilitator-bot&
+      async: 5
+      poll: 0
+
+    - debug:
+        var: bot_logs.stdout_lines
+
