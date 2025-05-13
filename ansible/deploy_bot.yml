@@ -21,15 +21,14 @@
         repo: https://github.com/SadovovAlex/FacilitatorBot.git
         dest: /opt/FacilitatorBot/repo
         force: yes
-        version: master  # Укажите нужную ветку или тег
 
     - name: Build bot
-      command: go build -o /opt/FacilitatorBot/bin/facilitator-bot
-      args:
-        chdir: /opt/FacilitatorBot/repo
-      environment:
-        GOPATH: /opt/FacilitatorBot/go
-        GOCACHE: /opt/FacilitatorBot/.cache/go-build
+      go_build:
+        output: /opt/FacilitatorBot/bin/facilitator-bot
+        package: /opt/FacilitatorBot/repo
+        env:
+          GOPATH: /opt/FacilitatorBot/go
+          GOCACHE: /opt/FacilitatorBot/.cache/go-build
 
     - name: Create OpenRC init script
       template:
@@ -38,10 +37,14 @@
         owner: root
         group: root
         mode: '0755'
-      notify:
-        - Enable and start bot service
 
   handlers:
-    - name: Enable and start bot service
-      command: rc-update add facilitator-bot default && service facilitator-bot start
+    - name: Enable bot service
+      command: rc-update add facilitator-bot default
+      changed_when: false
+
+    - name: Start bot service
+      service:
+        name: facilitator-bot
+        state: started
       changed_when: false
