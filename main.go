@@ -129,7 +129,7 @@ func main() {
 		//AnekdotPrompt: "Используя предоставленные сообщения пользователей, придумайте короткий, забавный анекдот, частично связанный с обсуждением. Напиши анекдот в виде одного законченного текста. Не используй в тексте анекдота username, придумай:\n%s",
 		HistoryDays:   1,
 		DBPath:        getEnv("DB_PATH", "telegram_bot.db"),
-		SummaryPrompt: "Generate concise Russian summary of discussion. Highlight key topics. Format authors as @username. Use only these messages:\n%s\nReply in Russian.",
+		SummaryPrompt: "Generate concise Russian summary of discussion. Highlight key topics. Format authors as name(@username). Use only these messages:\n%s\nReply in Russian.",
 		SystemPrompt:  "You're an AI assistant that creates concise Russian summaries of chat discussions. Identify main topics and essence. Always reply in Russian.",
 		AnekdotPrompt: "Using these messages, create a short funny joke in Russian, loosely related to discussion. Format as one cohesive text. Don't use usernames:\n%s\nReply in Russian only.",
 	}
@@ -396,7 +396,7 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 	}
 
 	//messages, err := b.getRecentMessages(chatID)
-	messages, err := b.getRecentMessages(-1002478281670, 100) //Выборка из БД только Атипичный Чат
+	messages, err := b.getRecentMessages(-1002478281670, 5) //Выборка из БД только Атипичный Чат
 	if err != nil {
 		fmt.Printf("ошибка получения сообщений: %v", err)
 		return
@@ -416,7 +416,7 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 		fmt.Fprintf(&messagesText, "[%s] %s(%v): %s\n",
 			msgTime.Format("15:04"),
 			msg.UserFirstName,
-			msg.UserID,
+			msg.Username,
 			msg.Text)
 	}
 

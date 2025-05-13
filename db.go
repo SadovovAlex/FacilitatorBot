@@ -76,7 +76,7 @@ func (b *Bot) saveUser(user *tgbotapi.User) error {
 
 	firstName := user.FirstName
 	if user.ID == 136817688 {
-		firstName = "Админ"
+		firstName = "Админ-Канала"
 	}
 
 	result, err := b.db.Exec(`
@@ -119,8 +119,8 @@ func (b *Bot) getRecentMessages(chatID int64, limit int) ([]DBMessage, error) {
 	}
 
 	query := `
-		SELECT m.id, m.chat_id, m.user_id, m.text, m.timestamp, 
-		       u.username, u.first_name, u.last_name, c.title as chat_title
+		SELECT m.id, m.chat_id, m.user_id, u.username, u.first_name, u.last_name, m.text, m.timestamp, 
+		       c.title as chat_title
 		FROM messages m
 		LEFT JOIN users u ON m.user_id = u.id
 		LEFT JOIN chats c ON m.chat_id = c.id
@@ -143,11 +143,11 @@ func (b *Bot) getRecentMessages(chatID int64, limit int) ([]DBMessage, error) {
 			&msg.ID,
 			&msg.ChatID,
 			&msg.UserID,
+			&msg.Username,
 			&msg.UserFirstName,
 			&msg.UserLastName,
 			&msg.Text,
 			&msg.Timestamp,
-			&msg.Username,
 			&msg.ChatTitle,
 		)
 		if err != nil {
@@ -159,6 +159,8 @@ func (b *Bot) getRecentMessages(chatID int64, limit int) ([]DBMessage, error) {
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("ошибка обработки результатов: %v", err)
 	}
+
+	//fmt.Printf("mmmm: %--v", messages)
 
 	return messages, nil
 }
