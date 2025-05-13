@@ -480,7 +480,7 @@ func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 	}
 
 	//messages, err := b.getRecentMessages(chatID)
-	messages, err := b.getRecentMessages(-1002478281670, 10) //Выборка из БД только Атипичный Чат
+	messages, err := b.getRecentMessages(-1002478281670, 100) //Выборка из БД только Атипичный Чат
 	if err != nil {
 		fmt.Printf("ошибка получения сообщений: %v", err)
 		return
