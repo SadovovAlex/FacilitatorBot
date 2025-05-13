@@ -1,21 +1,47 @@
+---
 - hosts: all
+  become: yes
   tasks:
+    - name: Install required packages
+      apk:
+        name: ["git", "go", "musl-dev"]
+        state: present
+        update_cache: yes
+
+    - name: Create application directory
+      file:
+        path: /opt/FacilitatorBot
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
     - name: Clone bot repository
       git:
         repo: https://github.com/SadovovAlex/FacilitatorBot.git
         dest: /opt/FacilitatorBot/repo
         force: yes
+        version: master  # Укажите нужную ветку или тег
 
     - name: Build bot
       command: go build -o /opt/FacilitatorBot/bin/facilitator-bot
       args:
         chdir: /opt/FacilitatorBot/repo
+      environment:
+        GOPATH: /opt/FacilitatorBot/go
+        GOCACHE: /opt/FacilitatorBot/.cache/go-build
 
-    - name: Run bot
-      command: /opt/FacilitatorBot/bin/facilitator-bot&
-      async: 5
-      poll: 0
+    - name: Create OpenRC init script
+      template:
+        src: facilitator-bot.openrc.j2
+        dest: /etc/init.d/facilitator-bot
+        owner: root
+        group: root
+        mode: '0755'
+      notify:
+        - Enable and start bot service
 
-    - debug:
-        var: bot_logs.stdout_lines
-
+  handlers:
+    - name: Enable and start bot service
+      command: rc-update add facilitator-bot default && service facilitator-bot start
+      changed_when: false
