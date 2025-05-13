@@ -518,7 +518,7 @@ func (b *Bot) handleTopicRequest(message *tgbotapi.Message) {
 
 	fmt.Printf("Resp AI: %v", summary)
 
-	b.sendMessage(chatID, "📝 Аnekdot:\n\n"+summary)
+	b.sendMessage(chatID, "Обсудим?\n\n"+summary)
 	b.lastSummary[chatID] = time.Now()
 }
 
