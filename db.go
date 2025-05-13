@@ -68,16 +68,21 @@ func (b *Bot) saveChat(chat *tgbotapi.Chat) error {
 	return err
 }
 
-// saveUser сохраняет информацию о пользователе в БД
+// saveUser сохраняет информацию о пользователе в БД, 136817688  это сообщения от имени канала
 func (b *Bot) saveUser(user *tgbotapi.User) error {
 	if user == nil {
 		return nil
 	}
 
+	firstName := user.FirstName
+	if user.ID == 136817688 {
+		firstName = "Админ"
+	}
+
 	result, err := b.db.Exec(`
 		INSERT OR IGNORE INTO users (id, username, first_name, last_name) 
 		VALUES (?, ?, ?, ?)`,
-		user.ID, user.UserName, user.FirstName, user.LastName)
+		user.ID, user.UserName, firstName, user.LastName)
 	if err != nil {
 		return err
 	}
@@ -89,8 +94,6 @@ func (b *Bot) saveUser(user *tgbotapi.User) error {
 
 	if rowsAffected > 0 {
 		fmt.Printf("Saved user: ID=%d, Username=%s, FirstName=%s, LastName=%s", user.ID, user.UserName, user.FirstName, user.LastName)
-	} else {
-		fmt.Printf("User already exists: ID=%d, Username=%s, FirstName=%s, LastName=%s", user.ID, user.UserName, user.FirstName, user.LastName)
 	}
 
 	return nil
