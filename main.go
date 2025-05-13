@@ -592,6 +592,7 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 	}
 
 	chatID := message.Chat.ID
+	userID := message.From.ID
 
 	// Проверяем, может ли бот читать сообщения в этом чате
 	if !b.canBotReadMessages(chatID) {
@@ -627,7 +628,7 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 
 	// Добавляем сообщение в историю
 	b.chatHistories[chatID] = append(b.chatHistories[chatID], msg)
-	log.Printf("Сохранено %d: %s: %s", chatID, msg.User, msg.Text)
+	log.Printf("Сохранено %d: [%v]%s: %s", chatID, userID, msg.User, msg.Text)
 
 	// Сохраняем чат и пользователя в БД
 	err := b.saveChat(message.Chat)
