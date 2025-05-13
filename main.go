@@ -28,6 +28,7 @@ const AI_REQUEST_TIMEOUT = 300 // seconds for AI request
 type Config struct {
 	TelegramToken string
 	LocalLLMUrl   string // URL локальной LLM (например "http://localhost:1234/v1/chat/completions")
+	AiModelName   string
 	AllowedGroups []int64
 	SummaryPrompt string
 	SystemPrompt  string
@@ -118,7 +119,8 @@ func main() {
 	// Загрузка конфигурации
 	config := Config{
 		TelegramToken: getEnv("TELEGRAM_BOT_TOKEN", ""),
-		LocalLLMUrl:   getEnv("LOCAL_LLM_URL", "http://localhost:1234/v1/chat/completions"),
+		LocalLLMUrl:   getEnv("AI_LOCAL_LLM_URL", "http://localhost:1234/v1/chat/completions"),
+		AiModelName:   getEnv("AI_MODEL", ""),
 		AllowedGroups: []int64{},
 		//SummaryPrompt: "Создай краткую сводку обсуждения. Выдели ключевые темы обсуждения. Авторы сообщений в формате @username. Будь  информативным. Используй только эти сообщения:\n%s",
 		//SystemPrompt:  "Ты полезный ассистент, который создает краткие содержательные пересказы обсуждений в чатах. Выделяющий тему и суть разговора.",
@@ -222,213 +224,88 @@ func (b *Bot) Run() {
 	// Очистка старых сообщений
 	go b.cleanupOldMessages()
 
+	// for update := range updates {
+	// 	if update.Message != nil {
+	// 		// Форматированный вывод ненулевых полей сообщения
+	// 		fmt.Println("=== Новое сообщение ===")
+	// 		if update.Message.MessageID != 0 {
+	// 			fmt.Printf("ID: %d\n", update.Message.MessageID)
+	// 		}
+	// 		if update.Message.From != nil {
+	// 			fmt.Printf("От: %s (ID: %d)\n",
+	// 				getUserName(update.Message.From),
+	// 				update.Message.From.ID)
+	// 		}
+	// 		if update.Message.Chat != nil {
+	// 			fmt.Printf("Чат: %s (ID: %d, тип: %s)\n",
+	// 				getChatTitle(update.Message.Chat),
+	// 				update.Message.Chat.ID,
+	// 				update.Message.Chat.Type)
+	// 		}
+	// 		if update.Message.Text != "" {
+	// 			fmt.Printf("Текст: %s\n", update.Message.Text)
+	// 		}
+	// 		if update.Message.Caption != "" {
+	// 			fmt.Printf("Подпись: %s\n", update.Message.Caption)
+	// 		}
+
+	// 		if update.Message.Date != 0 {
+	// 			// Конвертируем Unix timestamp в time.Time
+	// 			msgTime := time.Unix(int64(update.Message.Date), 0)
+	// 			fmt.Printf("Дата: %s\n", msgTime.Format("2006-01-02 15:04:05"))
+	// 		}
+
+	// 		if update.Message.ReplyToMessage != nil {
+	// 			fmt.Printf("Ответ на сообщение ID: %d\n", update.Message.ReplyToMessage.MessageID)
+	// 		}
+	// 		if update.Message.ForwardFromChat != nil {
+	// 			fmt.Printf("Переслано из чата: %s (ID: %d)\n",
+	// 				update.Message.ForwardFromChat.Title,
+	// 				update.Message.ForwardFromChat.ID)
+	// 		}
+	// 		fmt.Println("======================")
+
+	// 		// Обработка сообщения
+	// 		b.processMessage(update.Message)
+	// 	}
+	// }
 	for update := range updates {
 		if update.Message != nil {
-			// Форматированный вывод ненулевых полей сообщения
-			fmt.Println("=== Новое сообщение ===")
-			if update.Message.MessageID != 0 {
-				fmt.Printf("ID сообщения: %d\n", update.Message.MessageID)
-			}
+			// Логирование входящего сообщения (сокращенная версия)
+			logMsg := fmt.Sprintf("[%s] ", getMessageType(update.Message))
+
 			if update.Message.From != nil {
-				fmt.Printf("От: %s (ID: %d)\n",
-					getUserName(update.Message.From),
-					update.Message.From.ID)
+				logMsg += fmt.Sprintf("От: @%s ", getUserName(update.Message.From))
 			}
+
 			if update.Message.Chat != nil {
-				fmt.Printf("Чат: %s (ID: %d, тип: %s)\n",
-					getChatTitle(update.Message.Chat),
-					update.Message.Chat.ID,
-					update.Message.Chat.Type)
-			}
-			if update.Message.Text != "" {
-				fmt.Printf("Текст: %s\n", update.Message.Text)
-			}
-			if update.Message.Caption != "" {
-				fmt.Printf("Подпись: %s\n", update.Message.Caption)
+				logMsg += fmt.Sprintf("в %s(%d) ", getChatTitle(update.Message.Chat), update.Message.Chat.ID)
 			}
 
-			if update.Message.Date != 0 {
-				// Конвертируем Unix timestamp в time.Time
-				msgTime := time.Unix(int64(update.Message.Date), 0)
-				fmt.Printf("Дата: %s\n", msgTime.Format("2006-01-02 15:04:05"))
+			// Добавляем либо текст, либо подпись, либо отметку о медиа
+			switch {
+			case update.Message.Text != "":
+				text := update.Message.Text
+				if len(text) > 50 {
+					text = text[:50] + "..."
+				}
+				logMsg += fmt.Sprintf("- %q", text)
+			case update.Message.Caption != "":
+				caption := update.Message.Caption
+				if len(caption) > 50 {
+					caption = caption[:50] + "..."
+				}
+				logMsg += fmt.Sprintf("- [подпись] %q", caption)
+			default:
+				logMsg += "- [медиа]"
 			}
 
-			if update.Message.ReplyToMessage != nil {
-				fmt.Printf("Ответ на сообщение ID: %d\n", update.Message.ReplyToMessage.MessageID)
-			}
-			if update.Message.ForwardFromChat != nil {
-				fmt.Printf("Переслано из чата: %s (ID: %d)\n",
-					update.Message.ForwardFromChat.Title,
-					update.Message.ForwardFromChat.ID)
-			}
-			fmt.Println("======================")
+			log.Println(logMsg)
 
 			// Обработка сообщения
 			b.processMessage(update.Message)
 		}
 	}
-}
-
-// initDB инициализирует базу данных
-func (b *Bot) initDB() error {
-	// Создаем таблицу чатов
-	_, err := b.db.Exec(`
-		CREATE TABLE IF NOT EXISTS chats (
-			id INTEGER PRIMARY KEY,
-			title TEXT,
-			type TEXT,
-			username TEXT,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`)
-	if err != nil {
-		return fmt.Errorf("ошибка создания таблицы чатов: %v", err)
-	}
-
-	// Создаем таблицу пользователей
-	_, err = b.db.Exec(`
-		CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY,
-			username TEXT,
-			first_name TEXT,
-			last_name TEXT,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`)
-	if err != nil {
-		return fmt.Errorf("ошибка создания таблицы пользователей: %v", err)
-	}
-
-	// Создаем таблицу сообщений
-	_, err = b.db.Exec(`
-		CREATE TABLE IF NOT EXISTS messages (
-			id INTEGER PRIMARY KEY,
-			chat_id INTEGER,
-			user_id INTEGER,
-			text TEXT,
-			timestamp INTEGER,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY(chat_id) REFERENCES chats(id),
-			FOREIGN KEY(user_id) REFERENCES users(id)
-		)`)
-	if err != nil {
-		return fmt.Errorf("ошибка создания таблицы сообщений: %v", err)
-	}
-
-	return nil
-}
-
-// saveChat сохраняет информацию о чате в БД
-func (b *Bot) saveChat(chat *tgbotapi.Chat) error {
-	if chat == nil {
-		return nil
-	}
-
-	_, err := b.db.Exec(`
-		INSERT OR IGNORE INTO chats (id, title, type, username) 
-		VALUES (?, ?, ?, ?)`,
-		chat.ID, chat.Title, chat.Type, chat.UserName)
-
-	return err
-}
-
-// saveUser сохраняет информацию о пользователе в БД
-func (b *Bot) saveUser(user *tgbotapi.User) error {
-	if user == nil {
-		return nil
-	}
-
-	_, err := b.db.Exec(`
-		INSERT OR IGNORE INTO users (id, username, first_name, last_name) 
-		VALUES (?, ?, ?, ?)`,
-		user.ID, user.UserName, user.FirstName, user.LastName)
-
-	return err
-}
-
-// saveMessage сохраняет сообщение в БД
-func (b *Bot) saveMessage(chatID, userID int64, text string, timestamp int64) error {
-	_, err := b.db.Exec(`
-		INSERT INTO messages (chat_id, user_id, text, timestamp) 
-		VALUES (?, ?, ?, ?)`,
-		chatID, userID, text, timestamp)
-
-	return err
-}
-
-// getRecentMessages получает сообщения за последние 6 часов
-func (b *Bot) getRecentMessages(chatID int64, limit int) ([]DBMessage, error) {
-	sixHoursAgo := time.Now().Add(CHECK_HOURS * time.Hour).Unix()
-
-	// Если лимит не задан, устанавливаем его в 0, чтобы получить все сообщения
-	if limit == 0 {
-		limit = -1
-	}
-
-	query := `
-		SELECT m.id, m.chat_id, m.user_id, m.text, m.timestamp, 
-		       u.username, c.title as chat_title
-		FROM messages m
-		LEFT JOIN users u ON m.user_id = u.id
-		LEFT JOIN chats c ON m.chat_id = c.id
-		WHERE m.timestamp >= ? AND m.chat_id = ?
-		ORDER BY m.timestamp desc
-		LIMIT ?
-	`
-
-	rows, err := b.db.Query(query, sixHoursAgo, chatID, limit)
-	if err != nil {
-		return nil, fmt.Errorf("ошибка запроса сообщений: %v", err)
-	}
-	defer rows.Close()
-
-	var messages []DBMessage
-	for rows.Next() {
-		var msg DBMessage
-		err := rows.Scan(
-			&msg.ID,
-			&msg.ChatID,
-			&msg.UserID,
-			&msg.Text,
-			&msg.Timestamp,
-			&msg.Username,
-			&msg.ChatTitle,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("ошибка чтения сообщения: %v", err)
-		}
-		messages = append(messages, msg)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, fmt.Errorf("ошибка обработки результатов: %v", err)
-	}
-
-	return messages, nil
-}
-
-// =======  tg Вспомогательная функция для получения имени пользователя
-func getUserName(user *tgbotapi.User) string {
-	if user == nil {
-		return "Unknown"
-	}
-	if user.UserName != "" {
-		return "@" + user.UserName
-	}
-	return strings.TrimSpace(fmt.Sprintf("%s %s", user.FirstName, user.LastName))
-}
-
-// Вспомогательная функция для получения названия чата
-func getChatTitle(chat *tgbotapi.Chat) string {
-	if chat == nil {
-		return "Unknown"
-	}
-	if chat.Title != "" {
-		return chat.Title
-	}
-	return getUserName(&tgbotapi.User{
-		FirstName: chat.FirstName,
-		LastName:  chat.LastName,
-		UserName:  chat.UserName,
-	})
 }
 
 // processMessage обрабатывает входящие сообщения
@@ -782,7 +659,7 @@ func (b *Bot) generateSummary(messages string) (string, error) {
 	prompt := fmt.Sprintf(b.config.SummaryPrompt, messages)
 
 	request := LocalLLMRequest{
-		Model: "local-model", // Имя модели может быть любым для локальной LLM
+		Model: b.config.AiModelName, // Имя модели может быть любым для локальной LLM
 		Messages: []LocalLLMMessage{
 			{
 				Role:    "system",
@@ -831,7 +708,7 @@ func (b *Bot) generateAnekdot(messages string) (string, error) {
 	prompt := fmt.Sprintf(b.config.AnekdotPrompt, messages)
 
 	request := LocalLLMRequest{
-		Model: "local-model", // Имя модели может быть любым для локальной LLM
+		Model: b.config.AiModelName, // Имя модели может быть любым для локальной LLM
 		Messages: []LocalLLMMessage{
 			// {
 			// 	Role:    "system",
