@@ -3,9 +3,7 @@
 package main
 
 import (
-	"bytes"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -33,6 +31,7 @@ type Config struct {
 	SummaryPrompt string
 	SystemPrompt  string
 	AnekdotPrompt string
+	TopicPrompt   string
 	HistoryDays   int    // Сколько дней хранить историю
 	DBPath        string // Путь к файлу SQLite
 }
@@ -132,6 +131,7 @@ func main() {
 		SummaryPrompt: "Generate concise Russian summary of discussion. Highlight key topics. Format authors as name(@username). Use only these messages:\n%s\nReply in Russian.",
 		SystemPrompt:  "You're an AI assistant that creates concise Russian summaries of chat discussions. Identify main topics and essence. Always reply in Russian.",
 		AnekdotPrompt: "Using these messages, create a short funny joke in Russian, loosely related to discussion. Format as one cohesive text. Don't use usernames:\n%s\nReply in Russian only.",
+		TopicPrompt:   "Using these messages, create a short, funny discussion topic in Russian, loosely related to the previous conversation. Format it as one cohesive text. Add start topic question of disscussion. Do not use usernames:\n%s\nReply in Russian only.",
 	}
 
 	// Проверка обязательных переменных
@@ -226,51 +226,6 @@ func (b *Bot) Run() {
 	// Очистка старых сообщений
 	go b.cleanupOldMessages()
 
-	// for update := range updates {
-	// 	if update.Message != nil {
-	// 		// Форматированный вывод ненулевых полей сообщения
-	// 		fmt.Println("=== Новое сообщение ===")
-	// 		if update.Message.MessageID != 0 {
-	// 			fmt.Printf("ID: %d\n", update.Message.MessageID)
-	// 		}
-	// 		if update.Message.From != nil {
-	// 			fmt.Printf("От: %s (ID: %d)\n",
-	// 				getUserName(update.Message.From),
-	// 				update.Message.From.ID)
-	// 		}
-	// 		if update.Message.Chat != nil {
-	// 			fmt.Printf("Чат: %s (ID: %d, тип: %s)\n",
-	// 				getChatTitle(update.Message.Chat),
-	// 				update.Message.Chat.ID,
-	// 				update.Message.Chat.Type)
-	// 		}
-	// 		if update.Message.Text != "" {
-	// 			fmt.Printf("Текст: %s\n", update.Message.Text)
-	// 		}
-	// 		if update.Message.Caption != "" {
-	// 			fmt.Printf("Подпись: %s\n", update.Message.Caption)
-	// 		}
-
-	// 		if update.Message.Date != 0 {
-	// 			// Конвертируем Unix timestamp в time.Time
-	// 			msgTime := time.Unix(int64(update.Message.Date), 0)
-	// 			fmt.Printf("Дата: %s\n", msgTime.Format("2006-01-02 15:04:05"))
-	// 		}
-
-	// 		if update.Message.ReplyToMessage != nil {
-	// 			fmt.Printf("Ответ на сообщение ID: %d\n", update.Message.ReplyToMessage.MessageID)
-	// 		}
-	// 		if update.Message.ForwardFromChat != nil {
-	// 			fmt.Printf("Переслано из чата: %s (ID: %d)\n",
-	// 				update.Message.ForwardFromChat.Title,
-	// 				update.Message.ForwardFromChat.ID)
-	// 		}
-	// 		fmt.Println("======================")
-
-	// 		// Обработка сообщения
-	// 		b.processMessage(update.Message)
-	// 	}
-	// }
 	for update := range updates {
 		if update.Message != nil {
 			// Логирование входящего сообщения (сокращенная версия)
@@ -380,6 +335,8 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.handleStatsRequest(message)
 	case "anekdot":
 		b.handleAnekdotRequest(message)
+	case "скучно":
+		b.handleTopicRequest(message)
 	default:
 		b.sendMessage(message.Chat.ID, "Неизвестная команда. Используйте /help для списка команд.")
 	}
@@ -505,6 +462,54 @@ func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 
 	// Создание сводки с помощью локальной LLM
 	summary, err := b.generateAnekdot(messagesText.String())
+	if err != nil {
+		log.Printf("Ошибка генерации анекдота: %v", err)
+		b.sendMessage(chatID, "Не смог придумать анекдот, попробуй позже.")
+		return
+	}
+
+	fmt.Printf("Resp AI: %v", summary)
+
+	b.sendMessage(chatID, "📝 Аnekdot:\n\n"+summary)
+	b.lastSummary[chatID] = time.Now()
+}
+
+// handleSummaryRequest обрабатывает запрос на сводку текущего чата
+func (b *Bot) handleTopicRequest(message *tgbotapi.Message) {
+	chatID := message.Chat.ID
+
+	// Проверка разрешен ли чат
+	if !b.isChatAllowed(chatID) {
+		b.sendMessage(chatID, "Извините, у меня нет доступа к истории этого чата.")
+		return
+	}
+
+	//messages, err := b.getRecentMessages(chatID)
+	messages, err := b.getRecentMessages(-1002478281670, 100) //Выборка из БД только Атипичный Чат
+	if err != nil {
+		fmt.Printf("ошибка получения сообщений: %v", err)
+		return
+	}
+
+	if len(messages) == 0 {
+		fmt.Printf("Нет сообщений за последние 6 часов")
+		return
+	}
+
+	// Форматируем историю сообщений
+	var messagesText strings.Builder
+	for _, msg := range messages {
+		//msgTime := time.Unix(msg.Timestamp, 0)
+		fmt.Fprintf(&messagesText, "%s: %s\n",
+			//msgTime.Format("15:04"),
+			msg.Username,
+			msg.Text)
+	}
+
+	fmt.Println(messagesText.String())
+
+	// Создание сводки с помощью локальной LLM
+	summary, err := b.generateTopic(messagesText.String())
 	if err != nil {
 		log.Printf("Ошибка генерации анекдота: %v", err)
 		b.sendMessage(chatID, "Не смог придумать анекдот, попробуй позже.")
@@ -655,128 +660,6 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 	)
 	if err != nil {
 		log.Printf("Ошибка сохранения сообщения: %v", err)
-	}
-}
-
-// generateSummary создает краткую сводку с помощью локальной LLM
-func (b *Bot) generateSummary(messages string) (string, error) {
-	prompt := fmt.Sprintf(b.config.SummaryPrompt, messages)
-
-	request := LocalLLMRequest{
-		Model: b.config.AiModelName, // Имя модели может быть любым для локальной LLM
-		Messages: []LocalLLMMessage{
-			{
-				Role:    "system",
-				Content: b.config.SystemPrompt,
-			},
-			{
-				Role:    "user",
-				Content: prompt,
-			},
-		},
-		Temperature: 0.6,
-		MaxTokens:   16000,
-	}
-
-	jsonData, err := json.Marshal(request)
-	if err != nil {
-		return "", fmt.Errorf("ошибка маршалинга запроса: %v", err)
-	}
-
-	fmt.Println("Get AI request...")
-	resp, err := b.httpClient.Post(b.config.LocalLLMUrl, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("ошибка HTTP запроса: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("неверный статус код: %d", resp.StatusCode)
-	}
-
-	var response LocalLLMResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return "", fmt.Errorf("ошибка декодирования ответа: %v", err)
-	}
-
-	if len(response.Choices) == 0 {
-		return "", fmt.Errorf("пустой ответ от LLM")
-	}
-	fmt.Printf("Resp Tokens: %v \n", response.Usage.TotalTokens)
-
-	summary := response.Choices[0].Message.Content
-	if idx := strings.Index(summary, "--"); idx != -1 {
-		summary = summary[:idx]
-	}
-
-	return strings.TrimSpace(summary), nil
-}
-
-// generateSummary создает краткую сводку с помощью локальной LLM
-func (b *Bot) generateAnekdot(messages string) (string, error) {
-	prompt := fmt.Sprintf(b.config.AnekdotPrompt, messages)
-
-	request := LocalLLMRequest{
-		Model: b.config.AiModelName, // Имя модели может быть любым для локальной LLM
-		Messages: []LocalLLMMessage{
-			// {
-			// 	Role:    "system",
-			// 	Content: b.config.SystemPrompt,
-			// },
-			{
-				Role:    "user",
-				Content: prompt,
-			},
-		},
-		Temperature: 0.4,
-		MaxTokens:   1000,
-	}
-
-	jsonData, err := json.Marshal(request)
-	if err != nil {
-		return "", fmt.Errorf("ошибка маршалинга запроса: %v", err)
-	}
-
-	fmt.Println("Get AI request...")
-	resp, err := b.httpClient.Post(b.config.LocalLLMUrl, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("ошибка HTTP запроса: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("неверный статус код: %d", resp.StatusCode)
-	}
-
-	var response LocalLLMResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return "", fmt.Errorf("ошибка декодирования ответа: %v", err)
-	}
-
-	if len(response.Choices) == 0 {
-		return "", fmt.Errorf("пустой ответ от LLM")
-	}
-	fmt.Printf("Resp Tokens: %v", response.Usage.TotalTokens)
-
-	return response.Choices[0].Message.Content, nil
-}
-
-// cleanupOldMessages удаляет сообщения старше HistoryDays дней
-func (b *Bot) cleanupOldMessages() {
-	for {
-		time.Sleep(1 * time.Hour) // Проверяем каждый час
-
-		threshold := time.Now().Add(-time.Duration(b.config.HistoryDays) * 24 * time.Hour)
-
-		for chatID, messages := range b.chatHistories {
-			var filtered []ChatMessage
-			for _, msg := range messages {
-				if msg.Time.After(threshold) {
-					filtered = append(filtered, msg)
-				}
-			}
-			b.chatHistories[chatID] = filtered
-		}
 	}
 }
 

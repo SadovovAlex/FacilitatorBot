@@ -3,9 +3,29 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+// cleanupOldMessages удаляет сообщения старше HistoryDays дней
+func (b *Bot) cleanupOldMessages() {
+	for {
+		time.Sleep(1 * time.Hour) // Проверяем каждый час
+
+		threshold := time.Now().Add(-time.Duration(b.config.HistoryDays) * 24 * time.Hour)
+
+		for chatID, messages := range b.chatHistories {
+			var filtered []ChatMessage
+			for _, msg := range messages {
+				if msg.Time.After(threshold) {
+					filtered = append(filtered, msg)
+				}
+			}
+			b.chatHistories[chatID] = filtered
+		}
+	}
+}
 
 // Вспомогательная функция для получения названия чата
 func getChatTitle(chat *tgbotapi.Chat) string {
