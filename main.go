@@ -700,7 +700,12 @@ func (b *Bot) generateSummary(messages string) (string, error) {
 	}
 	fmt.Printf("Resp Tokens: %v", response.Usage.TotalTokens)
 
-	return response.Choices[0].Message.Content, nil
+	summary := response.Choices[0].Message.Content
+	if idx := strings.Index(summary, "--"); idx != -1 {
+		summary = summary[:idx]
+	}
+
+	return strings.TrimSpace(summary), nil
 }
 
 // generateSummary создает краткую сводку с помощью локальной LLM
