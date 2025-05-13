@@ -7,15 +7,18 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	godotenv "github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 const CHECK_HOURS = -6         // hours get DB messages
@@ -103,6 +106,9 @@ type LocalLLMResponse struct {
 }
 
 func main() {
+	// Настройка логирования
+	setupLogger()
+
 	// Загрузка переменных окружения из .env файла
 	err := godotenv.Load()
 	if err != nil {
@@ -146,6 +152,31 @@ func main() {
 
 	// Запуск бота
 	bot.Run()
+}
+
+func setupLogger() {
+	logDir := "logs"
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		log.Printf("Не удалось создать директорию для логов: %v. Используется текущая директория.", err)
+		logDir = "."
+	}
+
+	logFile := filepath.Join(logDir, "telegram_bot.log")
+
+	// Настройка ротации логов
+	lumberjackLogger := &lumberjack.Logger{
+		Filename:   logFile,
+		MaxSize:    10, // MB
+		MaxBackups: 7,  // сохранять до 7 файлов
+		MaxAge:     7,  // хранить до 7 дней
+		Compress:   true,
+		LocalTime:  true,
+	}
+
+	// Направляем вывод логов в файл и в stdout
+	log.SetOutput(io.MultiWriter(os.Stdout, lumberjackLogger))
+
+	log.Println("Логирование запущено.")
 }
 
 // getEnv возвращает значение переменной окружения или значение по умолчанию
