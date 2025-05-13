@@ -335,7 +335,7 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.handleStatsRequest(message)
 	case "anekdot":
 		b.handleAnekdotRequest(message)
-	case "скучно":
+	case "tema":
 		b.handleTopicRequest(message)
 	default:
 		b.sendMessage(message.Chat.ID, "Неизвестная команда. Используйте /help для списка команд.")
