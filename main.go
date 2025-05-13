@@ -18,7 +18,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const CHECK_HOURS = -6
+const CHECK_HOURS = -6         // hours get DB messages
+const AI_REQUEST_TIMEOUT = 300 // seconds for AI request
 
 // Config структура для конфигурации бота
 type Config struct {
@@ -113,11 +114,14 @@ func main() {
 		TelegramToken: getEnv("TELEGRAM_BOT_TOKEN", ""),
 		LocalLLMUrl:   getEnv("LOCAL_LLM_URL", "http://localhost:1234/v1/chat/completions"),
 		AllowedGroups: []int64{},
-		SummaryPrompt: "Создай краткую сводку обсуждения. Выдели ключевые моменты, напиши темы обсуждения. Авторы сообщений в формате @username. Будь  информативным. Используй только эти сообщения:\n%s",
-		SystemPrompt:  "Ты полезный ассистент, который создает краткие содержательные пересказы обсуждений в чатах. Выделяющий тему и суть разговора.",
-		AnekdotPrompt: "Используя предоставленные сообщения пользователей, придумайте короткий, забавный анекдот, частично связанный с обсуждением. Напиши анекдот в виде одного законченного текста. Не используй в тексте анекдота username, придумай:\n%s",
+		//SummaryPrompt: "Создай краткую сводку обсуждения. Выдели ключевые темы обсуждения. Авторы сообщений в формате @username. Будь  информативным. Используй только эти сообщения:\n%s",
+		//SystemPrompt:  "Ты полезный ассистент, который создает краткие содержательные пересказы обсуждений в чатах. Выделяющий тему и суть разговора.",
+		//AnekdotPrompt: "Используя предоставленные сообщения пользователей, придумайте короткий, забавный анекдот, частично связанный с обсуждением. Напиши анекдот в виде одного законченного текста. Не используй в тексте анекдота username, придумай:\n%s",
 		HistoryDays:   1,
 		DBPath:        getEnv("DB_PATH", "telegram_bot.db"),
+		SummaryPrompt: "Generate concise Russian summary of discussion. Highlight key topics. Format authors as @username. Use only these messages:\n%s\nReply in Russian.",
+		SystemPrompt:  "You're an AI assistant that creates concise Russian summaries of chat discussions. Identify main topics and essence. Always reply in Russian.",
+		AnekdotPrompt: "Using these messages, create a short funny joke in Russian, loosely related to discussion. Format as one cohesive text. Don't use usernames:\n%s\nReply in Russian only.",
 	}
 
 	// Проверка обязательных переменных
@@ -168,7 +172,7 @@ func NewBot(config Config) (*Bot, error) {
 	return &Bot{
 		config:        config,
 		tgBot:         tgBot,
-		httpClient:    &http.Client{Timeout: 120 * time.Second},
+		httpClient:    &http.Client{Timeout: AI_REQUEST_TIMEOUT * time.Second},
 		db:            db,
 		chatHistories: make(map[int64][]ChatMessage),
 		lastSummary:   make(map[int64]time.Time),
@@ -482,7 +486,7 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 	}
 
 	//messages, err := b.getRecentMessages(chatID)
-	messages, err := b.getRecentMessages(-1002478281670, 200) //Выборка из БД только Атипичный Чат
+	messages, err := b.getRecentMessages(-1002478281670, 100) //Выборка из БД только Атипичный Чат
 	if err != nil {
 		fmt.Printf("ошибка получения сообщений: %v", err)
 		return
@@ -565,7 +569,7 @@ func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 	}
 
 	//messages, err := b.getRecentMessages(chatID)
-	messages, err := b.getRecentMessages(-1002478281670, 50) //Выборка из БД только Атипичный Чат
+	messages, err := b.getRecentMessages(-1002478281670, 10) //Выборка из БД только Атипичный Чат
 	if err != nil {
 		fmt.Printf("ошибка получения сообщений: %v", err)
 		return
@@ -579,9 +583,9 @@ func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 	// Форматируем историю сообщений
 	var messagesText strings.Builder
 	for _, msg := range messages {
-		msgTime := time.Unix(msg.Timestamp, 0)
-		fmt.Fprintf(&messagesText, "[%s] %s: %s\n",
-			msgTime.Format("15:04"),
+		//msgTime := time.Unix(msg.Timestamp, 0)
+		fmt.Fprintf(&messagesText, "%s: %s\n",
+			//msgTime.Format("15:04"),
 			msg.Username,
 			msg.Text)
 	}
@@ -591,8 +595,8 @@ func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 	// Создание сводки с помощью локальной LLM
 	summary, err := b.generateAnekdot(messagesText.String())
 	if err != nil {
-		log.Printf("Ошибка генерации сводки: %v", err)
-		b.sendMessage(chatID, "Произошла ошибка при создании сводки.")
+		log.Printf("Ошибка генерации анекдота: %v", err)
+		b.sendMessage(chatID, "Не смог придумать анекдот, попробуй позже.")
 		return
 	}
 
@@ -758,8 +762,8 @@ func (b *Bot) generateSummary(messages string) (string, error) {
 				Content: prompt,
 			},
 		},
-		Temperature: 0.7,
-		MaxTokens:   30000,
+		Temperature: 0.6,
+		MaxTokens:   16000,
 	}
 
 	jsonData, err := json.Marshal(request)
@@ -798,17 +802,17 @@ func (b *Bot) generateAnekdot(messages string) (string, error) {
 	request := LocalLLMRequest{
 		Model: "local-model", // Имя модели может быть любым для локальной LLM
 		Messages: []LocalLLMMessage{
-			{
-				Role:    "system",
-				Content: b.config.SystemPrompt,
-			},
+			// {
+			// 	Role:    "system",
+			// 	Content: b.config.SystemPrompt,
+			// },
 			{
 				Role:    "user",
 				Content: prompt,
 			},
 		},
-		Temperature: 0.7,
-		MaxTokens:   10000,
+		Temperature: 0.4,
+		MaxTokens:   1000,
 	}
 
 	jsonData, err := json.Marshal(request)
