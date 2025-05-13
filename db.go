@@ -117,11 +117,12 @@ func (b *Bot) getRecentMessages(chatID int64, limit int) ([]DBMessage, error) {
 
 	query := `
 		SELECT m.id, m.chat_id, m.user_id, m.text, m.timestamp, 
-		       u.username, c.title as chat_title
+		       u.username, u.first_name, u.last_name, c.title as chat_title
 		FROM messages m
 		LEFT JOIN users u ON m.user_id = u.id
 		LEFT JOIN chats c ON m.chat_id = c.id
-		WHERE m.timestamp >= ? AND m.chat_id = ?
+		WHERE m.timestamp >= ? 
+		AND m.chat_id = ?
 		ORDER BY m.timestamp desc
 		LIMIT ?
 	`

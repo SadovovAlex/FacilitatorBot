@@ -353,7 +353,7 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 
 	// Проверяем, есть ли пользователь в списке разрешенных
 	if message.From != nil && !allowedUsers[message.From.ID] {
-		b.sendMessage(message.Chat.ID, "У вас нет прав для использования этого бота.")
+		b.sendMessage(message.Chat.ID, "Не хочу выполнять вашу команду.")
 		return
 	}
 
@@ -646,7 +646,7 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 	// Сохраняем сообщение в БД
 	err = b.saveMessage(
 		message.Chat.ID,
-		message.From.ID,
+		userID,
 		text,
 		int64(message.Date),
 	)
@@ -699,7 +699,7 @@ func (b *Bot) generateSummary(messages string) (string, error) {
 	if len(response.Choices) == 0 {
 		return "", fmt.Errorf("пустой ответ от LLM")
 	}
-	fmt.Printf("Resp Tokens: %v", response.Usage.TotalTokens)
+	fmt.Printf("Resp Tokens: %v \n", response.Usage.TotalTokens)
 
 	summary := response.Choices[0].Message.Content
 	if idx := strings.Index(summary, "--"); idx != -1 {
