@@ -140,6 +140,8 @@ func (b *Bot) getRecentMessages(chatID int64, limit int) ([]DBMessage, error) {
 			&msg.ID,
 			&msg.ChatID,
 			&msg.UserID,
+			&msg.UserFirstName,
+			&msg.UserLastName,
 			&msg.Text,
 			&msg.Timestamp,
 			&msg.Username,

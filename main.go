@@ -71,13 +71,15 @@ type DBUser struct {
 
 // DBMessage структура для хранения сообщений из БД
 type DBMessage struct {
-	ID        int
-	ChatID    int64
-	UserID    int64
-	Text      string
-	Timestamp int64
-	Username  string
-	ChatTitle string
+	ID            int
+	ChatID        int64
+	UserID        int64
+	UserFirstName string
+	UserLastName  string
+	Text          string
+	Timestamp     int64
+	Username      string
+	ChatTitle     string
 }
 
 // LocalLLMRequest структура запроса к локальной LLM
@@ -401,7 +403,7 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 	}
 
 	if len(messages) == 0 {
-		message := fmt.Sprintf("Нет сообщений за последние %v часов, я похоже спал =)", CHECK_HOURS*-1)
+		message := fmt.Sprintf("За последние %v часов, я похоже спал =)", CHECK_HOURS*-1)
 		fmt.Println(message)
 		b.sendMessage(chatID, message)
 		return
@@ -411,9 +413,10 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 	var messagesText strings.Builder
 	for _, msg := range messages {
 		msgTime := time.Unix(msg.Timestamp, 0)
-		fmt.Fprintf(&messagesText, "[%s] %s: %s\n",
+		fmt.Fprintf(&messagesText, "[%s] %s(%v): %s\n",
 			msgTime.Format("15:04"),
-			msg.Username,
+			msg.UserFirstName,
+			msg.UserID,
 			msg.Text)
 	}
 
