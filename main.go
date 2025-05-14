@@ -19,8 +19,9 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-const CHECK_HOURS = -6         // hours get DB messages
+const CHECK_HOURS = -16        // hours get DB messages
 const AI_REQUEST_TIMEOUT = 300 // seconds for AI request
+const LIMIT_MSG = 100          //лимит сообщений запрощенных для /summary
 
 // Config структура для конфигурации бота
 type Config struct {
@@ -437,7 +438,7 @@ func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 	}
 
 	//messages, err := b.getRecentMessages(chatID)
-	messages, err := b.getRecentMessages(-1002478281670, 100) //Выборка из БД только Атипичный Чат
+	messages, err := b.getRecentMessages(-1002478281670, LIMIT_MSG) //Выборка из БД только Атипичный Чат
 	if err != nil {
 		fmt.Printf("ошибка получения сообщений: %v", err)
 		return
