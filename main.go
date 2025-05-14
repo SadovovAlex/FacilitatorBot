@@ -127,7 +127,7 @@ func main() {
 		//SummaryPrompt: "Создай краткую сводку обсуждения. Выдели ключевые темы обсуждения. Авторы сообщений в формате @username. Будь  информативным. Используй только эти сообщения:\n%s",
 		//SystemPrompt:  "Ты полезный ассистент, который создает краткие содержательные пересказы обсуждений в чатах. Выделяющий тему и суть разговора.",
 		//AnekdotPrompt: "Используя предоставленные сообщения пользователей, придумайте короткий, забавный анекдот, частично связанный с обсуждением. Напиши анекдот в виде одного законченного текста. Не используй в тексте анекдота username, придумай:\n%s",
-		HistoryDays:   1,
+		HistoryDays:   7,
 		DBPath:        getEnv("DB_PATH", "telegram_bot.db"),
 		SummaryPrompt: "Generate concise Russian summary of discussion. Highlight key topics. Format authors as name(@username). Use only these messages:\n%s\nReply in Russian.",
 		SystemPrompt:  "You're an AI assistant that creates concise Russian summaries of chat discussions. Identify main topics and essence. Always reply in Russian.",
@@ -455,7 +455,7 @@ func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 		//msgTime := time.Unix(msg.Timestamp, 0)
 		fmt.Fprintf(&messagesText, "%s: %s\n",
 			//msgTime.Format("15:04"),
-			msg.Username,
+			msg.UserFirstName,
 			msg.Text)
 	}
 

@@ -164,3 +164,22 @@ func (b *Bot) getRecentMessages(chatID int64, limit int) ([]DBMessage, error) {
 
 	return messages, nil
 }
+
+// cleanupOldMessages удаляет сообщения старше HistoryDays дней
+func (b *Bot) cleanupOldMessages() {
+	for {
+		time.Sleep(1 * time.Hour) // Проверяем каждый час
+
+		threshold := time.Now().Add(-time.Duration(b.config.HistoryDays) * 24 * time.Hour)
+
+		for chatID, messages := range b.chatHistories {
+			var filtered []ChatMessage
+			for _, msg := range messages {
+				if msg.Time.After(threshold) {
+					filtered = append(filtered, msg)
+				}
+			}
+			b.chatHistories[chatID] = filtered
+		}
+	}
+}
