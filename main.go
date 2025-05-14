@@ -373,10 +373,8 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 	var messagesText strings.Builder
 	for _, msg := range messages {
 		msgTime := time.Unix(msg.Timestamp, 0)
-
 		// Создаем часовой пояс GMT+3
-		gmt3, _ := time.LoadLocation("GMT+3")
-
+		gmt3 := time.FixedZone("GMT+3", 3*60*60)
 		// Переводим время сообщения в часовой пояс GMT+3
 		msgTimeGMT3 := msgTime.In(gmt3)
 
