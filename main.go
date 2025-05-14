@@ -530,68 +530,122 @@ func (b *Bot) handleTopicRequest(message *tgbotapi.Message) {
 	b.lastSummary[chatID] = time.Now()
 }
 
-// handleStatsRequest показывает статистику по сообщениям из БД
+// handleStatsRequest показывает статистику по сообщениям и благодарностям из БД
 func (b *Bot) handleStatsRequest(message *tgbotapi.Message) {
 	chatID := message.Chat.ID
-
-	// 1. Получаем общее количество сообщений в чате
-	var totalMessages int
-	err := b.db.QueryRow("SELECT COUNT(*) FROM messages WHERE chat_id = ?", chatID).Scan(&totalMessages)
-	if err != nil {
-		log.Printf("Ошибка получения общего количества сообщений: %v", err)
-		b.sendMessage(chatID, "Произошла ошибка при получении статистики.")
-		return
-	}
-
-	// 2. Получаем топ-10 самых активных пользователей
-	rows, err := b.db.Query(`
-        SELECT u.username, COUNT(*) as message_count
-        FROM messages m
-        JOIN users u ON m.user_id = u.id
-        WHERE m.chat_id = ?
-        GROUP BY m.user_id
-        ORDER BY message_count DESC
-        LIMIT 10
-    `, chatID)
-	if err != nil {
-		log.Printf("Ошибка получения топа пользователей: %v", err)
-		b.sendMessage(chatID, "Произошла ошибка при получении статистики.")
-		return
-	}
-	defer rows.Close()
 
 	// Формируем сообщение со статистикой
 	var statsMsg strings.Builder
 	fmt.Fprintf(&statsMsg, "📊 Статистика чата:\n\n")
-	fmt.Fprintf(&statsMsg, "Всего сообщений: %d\n\n", totalMessages)
-	fmt.Fprintf(&statsMsg, "Топ-10 активных пользователей:\n")
 
-	rank := 1
-	for rows.Next() {
-		var username string
-		var count int
-		if err := rows.Scan(&username, &count); err != nil {
-			log.Printf("Ошибка сканирования строки: %v", err)
-			continue
-		}
-
-		if username == "" {
-			username = "Без username"
-		}
-		fmt.Fprintf(&statsMsg, "%d. %s - %d сообщ.\n", rank, username, count)
-		rank++
+	// 1. Общая статистика по сообщениям
+	var totalMessages int
+	err := b.db.QueryRow("SELECT COUNT(*) FROM messages WHERE chat_id = ?", chatID).Scan(&totalMessages)
+	if err == nil {
+		fmt.Fprintf(&statsMsg, "📨 Всего сообщений: %d\n", totalMessages)
 	}
 
-	// 3. Получаем количество сообщений за последние сутки
-	var lastDayMessages int
+	// 2. Статистика по благодарностям
+	var totalThanks int
+	err = b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE chat_id = ?", chatID).Scan(&totalThanks)
+	if err == nil {
+		fmt.Fprintf(&statsMsg, "🙏 Всего благодарностей: %d\n\n", totalThanks)
+	}
+
+	// 3. Топ получателей благодарностей
+	fmt.Fprintf(&statsMsg, "🏆 Топ-5 самых благодарных пользователей:\n")
+	rows, err := b.db.Query(`
+        SELECT u.username, COUNT(*) as thanks_count
+        FROM thanks t
+        JOIN users u ON t.from_user_id = u.id
+        WHERE t.chat_id = ?
+        GROUP BY t.from_user_id
+        ORDER BY thanks_count DESC
+        LIMIT 5
+    `, chatID)
+	if err == nil {
+		defer rows.Close()
+		rank := 1
+		for rows.Next() {
+			var username string
+			var count int
+			if err := rows.Scan(&username, &count); err != nil {
+				continue
+			}
+			if username == "" {
+				username = "Без username"
+			}
+			fmt.Fprintf(&statsMsg, "%d. %s - %d раз\n", rank, username, count)
+			rank++
+		}
+	}
+
+	// 4. Топ получателей благодарностей
+	fmt.Fprintf(&statsMsg, "\n💖 Топ-5 самых ценных участников:\n")
+	rows, err = b.db.Query(`
+        SELECT u.username, COUNT(*) as thanks_received
+        FROM thanks t
+        JOIN users u ON t.to_user_id = u.id
+        WHERE t.chat_id = ? AND t.to_user_id != 0
+        GROUP BY t.to_user_id
+        ORDER BY thanks_received DESC
+        LIMIT 5
+    `, chatID)
+	if err == nil {
+		defer rows.Close()
+		rank := 1
+		for rows.Next() {
+			var username string
+			var count int
+			if err := rows.Scan(&username, &count); err != nil {
+				continue
+			}
+			if username == "" {
+				username = "Без username"
+			}
+			fmt.Fprintf(&statsMsg, "%d. %s - %d благодарностей\n", rank, username, count)
+			rank++
+		}
+	}
+
+	// 5. Последние благодарности
+	fmt.Fprintf(&statsMsg, "\n🆕 Последние благодарности:\n")
+	rows, err = b.db.Query(`
+        SELECT u1.username, u2.username, t.text
+        FROM thanks t
+        LEFT JOIN users u1 ON t.from_user_id = u1.id
+        LEFT JOIN users u2 ON t.to_user_id = u2.id
+        WHERE t.chat_id = ?
+        ORDER BY t.timestamp DESC
+        LIMIT 3
+    `, chatID)
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var fromUser, toUser, text string
+			if err := rows.Scan(&fromUser, &toUser, &text); err != nil {
+				continue
+			}
+			if fromUser == "" {
+				fromUser = "Аноним"
+			}
+			if toUser == "" {
+				toUser = "всех"
+			}
+			fmt.Fprintf(&statsMsg, "👉 %s → %s: %s\n", fromUser, toUser, truncateText(text, 20))
+		}
+	}
+
+	// 6. Статистика за последние сутки
 	dayAgo := time.Now().Add(-24 * time.Hour).Unix()
+	var lastDayThanks int
 	err = b.db.QueryRow(`
         SELECT COUNT(*) 
-        FROM messages 
+        FROM thanks 
         WHERE chat_id = ? AND timestamp >= ?
-    `, chatID, dayAgo).Scan(&lastDayMessages)
+    `, chatID, dayAgo).Scan(&lastDayThanks)
 	if err == nil {
-		fmt.Fprintf(&statsMsg, "\nСообщений за сутки: %d", lastDayMessages)
+		fmt.Fprintf(&statsMsg, "\n🕒 Благодарностей за сутки: %d", lastDayThanks)
 	}
 
 	b.sendMessage(chatID, statsMsg.String())
@@ -669,6 +723,9 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 	if err != nil {
 		log.Printf("Ошибка сохранения сообщения: %v", err)
 	}
+
+	// Проверяем, содержит ли сообщение "спасибо" или "спс"
+	b.checkForThanks(message)
 }
 
 // sendMessage отправляет сообщение в чат

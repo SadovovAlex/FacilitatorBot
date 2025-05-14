@@ -51,6 +51,34 @@ func (b *Bot) initDB() error {
 		return fmt.Errorf("ошибка создания таблицы сообщений: %v", err)
 	}
 
+	// Создаем таблицу спасиб =)
+	_, err = b.db.Exec(`
+		CREATE TABLE IF NOT EXISTS thanks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			chat_id INTEGER NOT NULL,
+			from_user_id INTEGER NOT NULL,
+			to_user_id INTEGER NOT NULL,
+			text TEXT NOT NULL,
+			timestamp INTEGER NOT NULL,
+			message_id INTEGER NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (from_user_id) REFERENCES users(user_id),
+			FOREIGN KEY (to_user_id) REFERENCES users(user_id)
+		)`)
+	if err != nil {
+		return fmt.Errorf("ошибка создания таблицы для спасибо: %v", err)
+	}
+
+	// Создаем индексы
+	_, err = b.db.Exec(`
+		CREATE INDEX IF NOT EXISTS idx_thanks_from_user ON thanks(from_user_id);
+		CREATE INDEX IF NOT EXISTS idx_thanks_to_user ON thanks(to_user_id);
+		CREATE INDEX IF NOT EXISTS idx_thanks_chat ON thanks(chat_id);
+		`)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -107,6 +135,33 @@ func (b *Bot) saveMessage(chatID, userID int64, text string, timestamp int64) er
 		chatID, userID, text, timestamp)
 
 	return err
+}
+
+// saveThanks сохраняет благодарность с информацией о получателе
+func (b *Bot) saveThanks(chatID, fromUserID, toUserID int64, text string, timestamp int64, messageID int) error {
+	_, err := b.db.Exec(`
+        INSERT INTO thanks (chat_id, from_user_id, to_user_id, text, timestamp, message_id) 
+        VALUES (?, ?, ?, ?, ?, ?)`,
+		chatID, fromUserID, toUserID, text, timestamp, messageID)
+
+	return err
+}
+
+// getUserByUsername получает пользователя по username из БД
+func (b *Bot) getUserByUsername(username string) (*tgbotapi.User, error) {
+	// Реализация зависит от вашей структуры БД
+	// Примерная реализация:
+	var user tgbotapi.User
+	err := b.db.QueryRow(`
+        SELECT user_id, first_name, last_name, username 
+        FROM users 
+        WHERE username = ?`, username).Scan(
+		&user.ID, &user.FirstName, &user.LastName, &user.UserName)
+
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 
 // getRecentMessages получает сообщения за последние 6 часов
