@@ -328,6 +328,8 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.sendMessage(message.Chat.ID, "Привет! Я бот для создания кратких пересказов обсуждений. Используй /summary для получения сводки.")
 	case "help":
 		b.sendMessage(message.Chat.ID, "Доступные команды:\n/summary - получить сводку обсуждений\n/summary_from - получить сводку из другого чата (ответьте на это сообщение, переслав сообщение из нужного чата)\n/stats - статистика по сохраненным сообщениям\n/anekdot - придумаю анекдот по темам обсуждения =)")
+	case "ping":
+		b.sendMessage(message.Chat.ID, "pong")
 	case "summary":
 		b.handleSummaryRequest(message)
 	case "summary_from":
