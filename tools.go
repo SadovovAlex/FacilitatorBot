@@ -8,6 +8,68 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// isBotMentioned проверяет, обращается ли сообщение к боту
+func (b *Bot) isBotMentioned(message *tgbotapi.Message) bool {
+	// Приводим текст к нижнему регистру для регистронезависимого сравнения
+	lowerText := strings.ToLower(message.Text)
+
+	// Проверяем обращения по ключевым словам
+	keywords := []string{"sheriff:", "шериф:", "шерифф:"}
+	for _, kw := range keywords {
+		if strings.HasPrefix(lowerText, kw) {
+			return true
+		}
+	}
+
+	// Проверяем прямое упоминание бота через @username
+	if message.Entities != nil {
+		for _, entity := range message.Entities {
+			if entity.Type == "mention" {
+				mention := message.Text[entity.Offset : entity.Offset+entity.Length]
+				if strings.EqualFold(mention, "@"+b.tgBot.Self.UserName) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+// getHelp возвращает текст справки с доступными командами
+func (b *Bot) getHelp() string {
+	return `Доступные команды:
+/help
+/summary - получить сводку обсуждений
+/stats - статистика по сохраненным сообщениям
+/anekdot - придумаю анекдот по темам обсуждения =)
+/tema - продолжим обсуждать тему
+
+Также вы можете обратиться ко мне напрямую:
+- Начиная сообщение с "Sheriff:", "Шериф:" или "Шерифф:"
+- Или упомянув меня через @username (@` + b.tgBot.Self.UserName + `)`
+}
+
+// removeBotMention удаляет упоминание бота из текста сообщения
+func (b *Bot) removeBotMention(text string) string {
+	lowerText := strings.ToLower(text)
+
+	// Удаляем ключевые слова
+	keywords := []string{"sheriff:", "шериф:", "шерифф:"}
+	for _, kw := range keywords {
+		if strings.HasPrefix(lowerText, kw) {
+			return strings.TrimSpace(text[len(kw):])
+		}
+	}
+
+	// Удаляем упоминание @username
+	if strings.Contains(lowerText, "@"+strings.ToLower(b.tgBot.Self.UserName)) {
+		return strings.ReplaceAll(text, "@"+b.tgBot.Self.UserName, "")
+	}
+
+	return text
+}
+
 // Вспомогательная функция для обрезания текста
 func truncateText(text string, maxLength int) string {
 	if len(text) > maxLength {

@@ -268,13 +268,15 @@ func (b *Bot) Run() {
 
 // processMessage обрабатывает входящие сообщения
 func (b *Bot) processMessage(message *tgbotapi.Message) {
-	// fmt.Printf("FromChat:%v\n", message.ForwardFromChat)
-	// fmt.Printf("Chat:%v\n", message.Chat)
-	// fmt.Printf("сообщение: %++v\n", message)
-
 	// Обработка команд
 	if message.IsCommand() {
 		b.handleCommand(message)
+		return
+	}
+
+	// Проверяем, обращается ли пользователь к боту
+	if b.isBotMentioned(message) {
+		b.handleBotMention(message)
 		return
 	}
 
@@ -282,6 +284,7 @@ func (b *Bot) processMessage(message *tgbotapi.Message) {
 	if message.Chat.IsGroup() || message.Chat.IsSuperGroup() {
 		b.storeMessage(message)
 	}
+
 }
 
 func (b *Bot) canBotReadMessages(chatID int64) bool {
@@ -327,10 +330,10 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 	case "start":
 		b.sendMessage(message.Chat.ID, "Привет! Я бот для создания кратких пересказов обсуждений. Используй /summary для получения сводки.")
 	case "help":
-		b.sendMessage(message.Chat.ID, "Доступные команды:\n/summary - получить сводку обсуждений\n/summary_from - получить сводку из другого чата (ответьте на это сообщение, переслав сообщение из нужного чата)\n/stats - статистика по сохраненным сообщениям\n/anekdot - придумаю анекдот по темам обсуждения =)")
+		b.sendMessage(message.Chat.ID, b.getHelp())
 	case "ping":
 		b.sendMessage(message.Chat.ID, "pong")
-	case "summary":
+	case "summary", "саммари":
 		b.handleSummaryRequest(message)
 	// case "summary_from":
 	// 	b.handleSummaryFromRequest(message)
@@ -342,6 +345,25 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.handleTopicRequest(message)
 	default:
 		b.sendMessage(message.Chat.ID, "Неизвестная команда. Используйте /help для списка команд.")
+	}
+}
+
+// handleBotMention обрабатывает сообщения, адресованные боту
+func (b *Bot) handleBotMention(message *tgbotapi.Message) {
+	// Удаляем ключевое слово или упоминание из текста
+	cleanText := b.removeBotMention(message.Text)
+
+	// Обрабатываем очищенный текст сообщения
+	switch {
+	case strings.Contains(strings.ToLower(cleanText), "сводка"):
+		b.handleSummaryRequest(message)
+	case strings.Contains(strings.ToLower(cleanText), "помощь"),
+		strings.Contains(strings.ToLower(cleanText), "help"),
+		strings.Contains(strings.ToLower(cleanText), "команды"):
+		b.sendMessage(message.Chat.ID, b.getHelp())
+	default:
+		b.sendMessage(message.Chat.ID, "Я вас понял, но создатель не научил меня ответить на это.\n\n"+b.getHelp())
+		//TODO добавить отправку в AI запроса
 	}
 }
 
