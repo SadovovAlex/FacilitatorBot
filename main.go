@@ -233,7 +233,7 @@ func (b *Bot) Run() {
 			logMsg := fmt.Sprintf("[%s] ", getMessageType(update.Message))
 
 			if update.Message.From != nil {
-				logMsg += fmt.Sprintf("От: @%s ", getUserName(update.Message.From))
+				logMsg += fmt.Sprintf("От: @%s[%v] ", getUserName(update.Message.From), update.Message.From.ID)
 			}
 
 			if update.Message.Chat != nil {
@@ -332,13 +332,13 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.sendMessage(message.Chat.ID, "pong")
 	case "summary":
 		b.handleSummaryRequest(message)
-	case "summary_from":
-		b.handleSummaryFromRequest(message)
-	case "stats":
+	// case "summary_from":
+	// 	b.handleSummaryFromRequest(message)
+	case "stat", "stats":
 		b.handleStatsRequest(message)
 	case "anekdot":
 		b.handleAnekdotRequest(message)
-	case "tema":
+	case "tema", "topic":
 		b.handleTopicRequest(message)
 	default:
 		b.sendMessage(message.Chat.ID, "Неизвестная команда. Используйте /help для списка команд.")
@@ -388,7 +388,8 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 	fmt.Println(messagesText.String())
 
 	// Создание сводки с помощью локальной LLM
-	summary, err := b.generateSummary(messagesText.String())
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.SummaryPrompt, messagesText.String()), chatID)
+
 	if err != nil {
 		log.Printf("Ошибка генерации сводки: %v", err)
 		b.sendMessage(chatID, "Произошла ошибка при создании сводки.")
@@ -402,37 +403,37 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 }
 
 // handleSummaryFromRequest обрабатывает запрос на сводку из другого чата
-func (b *Bot) handleSummaryFromRequest(message *tgbotapi.Message) {
-	if message.ReplyToMessage == nil || message.ReplyToMessage.ForwardFromChat == nil {
-		b.sendMessage(message.Chat.ID, "Пожалуйста, ответьте на это сообщение, переслав сообщение из чата, для которого нужно сделать сводку.")
-		return
-	}
+// func (b *Bot) handleSummaryFromRequest(message *tgbotapi.Message) {
+// 	if message.ReplyToMessage == nil || message.ReplyToMessage.ForwardFromChat == nil {
+// 		b.sendMessage(message.Chat.ID, "Пожалуйста, ответьте на это сообщение, переслав сообщение из чата, для которого нужно сделать сводку.")
+// 		return
+// 	}
 
-	sourceChatID := message.ReplyToMessage.ForwardFromChat.ID
-	history := b.chatHistories[sourceChatID]
+// 	sourceChatID := message.ReplyToMessage.ForwardFromChat.ID
+// 	history := b.chatHistories[sourceChatID]
 
-	if len(history) == 0 {
-		b.sendMessage(message.Chat.ID, fmt.Sprintf("Нет данных для чата %s.", message.ReplyToMessage.ForwardFromChat.Title))
-		return
-	}
+// 	if len(history) == 0 {
+// 		b.sendMessage(message.Chat.ID, fmt.Sprintf("Нет данных для чата %s.", message.ReplyToMessage.ForwardFromChat.Title))
+// 		return
+// 	}
 
-	// Форматируем историю сообщений
-	var messagesText strings.Builder
-	for _, msg := range history {
-		fmt.Fprintf(&messagesText, "[%s] %s: %s\n",
-			msg.Time.Format("15:04"), msg.User, msg.Text)
-	}
+// 	// Форматируем историю сообщений
+// 	var messagesText strings.Builder
+// 	for _, msg := range history {
+// 		fmt.Fprintf(&messagesText, "[%s] %s: %s\n",
+// 			msg.Time.Format("15:04"), msg.User, msg.Text)
+// 	}
 
-	summary, err := b.generateSummary(messagesText.String())
-	if err != nil {
-		log.Printf("Ошибка генерации сводки: %v", err)
-		b.sendMessage(message.Chat.ID, "Произошла ошибка при создании сводки.")
-		return
-	}
+// 	summary, err := b.generateSummary(messagesText.String())
+// 	if err != nil {
+// 		log.Printf("Ошибка генерации сводки: %v", err)
+// 		b.sendMessage(message.Chat.ID, "Произошла ошибка при создании сводки.")
+// 		return
+// 	}
 
-	b.sendMessage(message.Chat.ID, fmt.Sprintf("📝 Краткая сводка из %s:\n\n%s",
-		message.ReplyToMessage.ForwardFromChat.Title, summary))
-}
+// 	b.sendMessage(message.Chat.ID, fmt.Sprintf("📝 Краткая сводка из %s:\n\n%s",
+// 		message.ReplyToMessage.ForwardFromChat.Title, summary))
+// }
 
 // handleSummaryRequest обрабатывает запрос на сводку текущего чата
 func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
@@ -466,10 +467,10 @@ func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 			msg.Text)
 	}
 
-	fmt.Println(messagesText.String())
-
 	// Создание сводки с помощью локальной LLM
-	summary, err := b.generateAnekdot(messagesText.String())
+	//summary, err := b.generateAnekdot(messagesText.String(), chatID)
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.AnekdotPrompt, messagesText.String()), chatID)
+
 	if err != nil {
 		log.Printf("Ошибка генерации анекдота: %v", err)
 		b.sendMessage(chatID, "Не смог придумать анекдот, попробуй позже.")
@@ -517,10 +518,12 @@ func (b *Bot) handleTopicRequest(message *tgbotapi.Message) {
 	fmt.Println(messagesText.String())
 
 	// Создание сводки с помощью локальной LLM
-	summary, err := b.generateTopic(messagesText.String())
+	//summary, err := b.generateTopic(messagesText.String(), chatID)
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.TopicPrompt, messagesText.String()), chatID)
+
 	if err != nil {
-		log.Printf("Ошибка генерации анекдота: %v", err)
-		b.sendMessage(chatID, "Не смог придумать анекдот, попробуй позже.")
+		log.Printf("Ошибка генерации темы обсуждений: %v", err)
+		b.sendMessage(chatID, "Не смог придумать тему, сорян.")
 		return
 	}
 
@@ -698,7 +701,7 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 
 	// Добавляем сообщение в историю
 	b.chatHistories[chatID] = append(b.chatHistories[chatID], msg)
-	log.Printf("Сохранено %d: [%v]%s: %s", chatID, userID, msg.User, msg.Text)
+	//log.Printf("Сохранено %d: [%v]%s: %s", chatID, userID, msg.User, msg.Text)
 
 	// Сохраняем чат и пользователя в БД
 	err := b.saveChat(message.Chat)
