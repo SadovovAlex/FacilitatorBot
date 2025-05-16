@@ -1,0 +1,44 @@
+- hosts: all
+  tasks:
+
+    - name: Clone bot repository
+      git:
+        repo: https://github.com/SadovovAlex/FacilitatorBot.git
+        dest: /opt/FacilitatorBot/repo
+        force: yes
+
+    - name: Build bot
+      command: go build -o /opt/FacilitatorBot/facilitator-bot
+      args:
+        chdir: /opt/FacilitatorBot/repo
+      register: build_result
+
+    - name: Create bot directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+      with_items:
+        - /opt/FacilitatorBot/logs
+      when: build_result.rc == 0
+
+    - name: Create OpenRC service file
+      template:
+        src: facilitator-bot.openrc.j2
+        dest: /etc/init.d/facilitator-bot
+        mode: '0755'
+      when: build_result.rc == 0
+
+    - name: Enable and start facilitator-bot service
+      command: "{{ item }}"
+      with_items:
+        - rc-update add facilitator-bot default
+        - rc-service facilitator-bot start
+      register: service_status
+      when: build_result.rc == 0
+
+    - name: Check bot logs
+      command: tail -n 10 /opt/FacilitatorBot/logs/telegram_bot.log
+      register: bot_logs
+      when: service_status.changed and not ansible_check_mode
+
+    
