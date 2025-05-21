@@ -352,17 +352,20 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 func (b *Bot) handleBotMention(message *tgbotapi.Message) {
 	// Удаляем ключевое слово или упоминание из текста
 	cleanText := b.removeBotMention(message.Text)
-
 	// Обрабатываем очищенный текст сообщения
 	switch {
-	case strings.Contains(strings.ToLower(cleanText), "сводка"):
+	case strings.Contains(strings.ToLower(cleanText), "ping"),
+		strings.Contains(strings.ToLower(cleanText), "пинг"):
+		b.sendMessage(message.Chat.ID, "pong")
+	case strings.Contains(strings.ToLower(cleanText), "сводка"),
+		strings.Contains(strings.ToLower(cleanText), "саммари"):
 		b.handleSummaryRequest(message)
 	case strings.Contains(strings.ToLower(cleanText), "помощь"),
 		strings.Contains(strings.ToLower(cleanText), "help"),
 		strings.Contains(strings.ToLower(cleanText), "команды"):
 		b.sendMessage(message.Chat.ID, b.getHelp())
 	default:
-		b.sendMessage(message.Chat.ID, "Я вас понял, но создатель не научил меня ответить на это.\n\n"+b.getHelp())
+		b.sendMessage(message.Chat.ID, "Я вас понял, но создатель не научил меня ответить на '"+strings.ToLower(cleanText)+"'.\n\n"+b.getHelp())
 		//TODO добавить отправку в AI запроса
 	}
 }
@@ -384,7 +387,7 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 	}
 
 	if len(messages) == 0 {
-		message := fmt.Sprintf("За последние %v часов, я похоже спал =)", CHECK_HOURS*-1)
+		message := fmt.Sprintf("Последние %v часов, я похоже спал =)", CHECK_HOURS*-1)
 		fmt.Println(message)
 		b.sendMessage(chatID, message)
 		return
