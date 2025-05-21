@@ -377,8 +377,7 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 		return
 	}
 
-	//messages, err := b.getRecentMessages(chatID)
-	messages, err := b.getRecentMessages(-1002478281670, 5) //Выборка из БД только Атипичный Чат
+	messages, err := b.getRecentMessages(-1002478281670, -1) //Выборка из БД только Атипичный Чат
 	if err != nil {
 		fmt.Printf("ошибка получения сообщений: %v", err)
 		return
@@ -467,8 +466,7 @@ func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 		return
 	}
 
-	//messages, err := b.getRecentMessages(chatID)
-	messages, err := b.getRecentMessages(-1002478281670, LIMIT_MSG) //Выборка из БД только Атипичный Чат
+	messages, err := b.getRecentMessages(-1002478281670, -1) //Выборка из БД только Атипичный Чат
 	if err != nil {
 		fmt.Printf("ошибка получения сообщений: %v", err)
 		return
@@ -515,8 +513,7 @@ func (b *Bot) handleTopicRequest(message *tgbotapi.Message) {
 		return
 	}
 
-	//messages, err := b.getRecentMessages(chatID)
-	messages, err := b.getRecentMessages(-1002478281670, 100) //Выборка из БД только Атипичный Чат
+	messages, err := b.getRecentMessages(-1002478281670, -1) //Выборка из БД только Атипичный Чат
 	if err != nil {
 		fmt.Printf("ошибка получения сообщений: %v", err)
 		return

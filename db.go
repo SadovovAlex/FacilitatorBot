@@ -164,9 +164,9 @@ func (b *Bot) getUserByUsername(username string) (*tgbotapi.User, error) {
 	return &user, nil
 }
 
-// getRecentMessages получает сообщения за последние 6 часов
+// getRecentMessages получает сообщения за последние [limit] часов
 func (b *Bot) getRecentMessages(chatID int64, limit int) ([]DBMessage, error) {
-	sixHoursAgo := time.Now().Add(CHECK_HOURS * time.Hour).Unix()
+	hoursAgo := time.Now().Add(CHECK_HOURS * time.Hour).Unix()
 
 	// Если лимит не задан, устанавливаем его в 0, чтобы получить все сообщения
 	if limit == 0 {
@@ -185,7 +185,7 @@ func (b *Bot) getRecentMessages(chatID int64, limit int) ([]DBMessage, error) {
 		LIMIT ?
 	`
 
-	rows, err := b.db.Query(query, sixHoursAgo, chatID, limit)
+	rows, err := b.db.Query(query, hoursAgo, chatID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка запроса сообщений: %v", err)
 	}
