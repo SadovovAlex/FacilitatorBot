@@ -21,7 +21,7 @@ import (
 
 const CHECK_HOURS = -16        // hours get DB messages
 const AI_REQUEST_TIMEOUT = 300 // seconds for AI request
-const LIMIT_MSG = 100          //лимит сообщений запрощенных для /summary
+const LIMIT_MSG = 300          //лимит сообщений запрощенных для /summary
 
 // Config структура для конфигурации бота
 type Config struct {
