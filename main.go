@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,9 +20,9 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-const CHECK_HOURS = -16        // hours get DB messages
+const CHECK_HOURS = -24        // hours get DB messages
 const AI_REQUEST_TIMEOUT = 300 // seconds for AI request
-const LIMIT_MSG = 300          //лимит сообщений запрощенных для /summary
+const LIMIT_MSG = 200          //лимит сообщений запрощенных для /summary
 
 // Config структура для конфигурации бота
 type Config struct {
@@ -340,7 +341,20 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 	case "ping":
 		b.sendMessage(message.Chat.ID, "pong")
 	case "summary", "саммари":
-		b.handleSummaryRequest(message)
+		// Обработка параметра количества сообщений (по умолчанию 50)
+		args := strings.Fields(message.CommandArguments())
+		count := LIMIT_MSG // значение по умолчанию
+		if len(args) > 0 {
+			if num, err := strconv.Atoi(args[0]); err == nil && num > 0 {
+				count = num
+				// Ограничим максимальное количество сообщений для безопасности
+				if count > LIMIT_MSG {
+					count = LIMIT_MSG
+					b.sendMessage(message.Chat.ID, fmt.Sprintf("Я помню только %d сообщений...", LIMIT_MSG))
+				}
+			}
+		}
+		b.handleSummaryRequest(message, count)
 	// case "summary_from":
 	// 	b.handleSummaryFromRequest(message)
 	case "stat", "stats":
@@ -365,7 +379,20 @@ func (b *Bot) handleBotMention(message *tgbotapi.Message) {
 		b.sendMessage(message.Chat.ID, "pong")
 	case strings.Contains(strings.ToLower(cleanText), "сводка"),
 		strings.Contains(strings.ToLower(cleanText), "саммари"):
-		b.handleSummaryRequest(message)
+		// Обработка параметра количества сообщений (по умолчанию LIMIT_MSG)
+		args := strings.Fields(message.CommandArguments())
+		count := LIMIT_MSG // значение по умолчанию
+		if len(args) > 0 {
+			if num, err := strconv.Atoi(args[0]); err == nil && num > 0 {
+				count = num
+				// Ограничим максимальное количество сообщений для безопасности
+				if count > LIMIT_MSG {
+					count = LIMIT_MSG
+					b.sendMessage(message.Chat.ID, fmt.Sprintf("Я помню только %d сообщений...", LIMIT_MSG))
+				}
+			}
+		}
+		b.handleSummaryRequest(message, count)
 	case strings.Contains(strings.ToLower(cleanText), "помощь"),
 		strings.Contains(strings.ToLower(cleanText), "help"),
 		strings.Contains(strings.ToLower(cleanText), "команды"):
@@ -377,7 +404,7 @@ func (b *Bot) handleBotMention(message *tgbotapi.Message) {
 }
 
 // handleSummaryRequest обрабатывает запрос на сводку текущего чата
-func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
+func (b *Bot) handleSummaryRequest(message *tgbotapi.Message, count int) {
 	chatID := message.Chat.ID
 
 	// Проверка разрешен ли чат
@@ -386,7 +413,7 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message) {
 		return
 	}
 
-	messages, err := b.getRecentMessages(-1002478281670, -1) //Выборка из БД только Атипичный Чат
+	messages, err := b.getRecentMessages(-1002478281670, count) //Выборка из БД только Атипичный Чат
 	if err != nil {
 		fmt.Printf("ошибка получения сообщений: %v", err)
 		return
