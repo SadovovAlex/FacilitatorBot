@@ -20,7 +20,7 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-const CHECK_HOURS = -24        // hours get DB messages
+const CHECK_HOURS = -20        // hours get DB messages
 const AI_REQUEST_TIMEOUT = 300 // seconds for AI request
 const LIMIT_MSG = 200          //лимит сообщений запрощенных для /summary
 
