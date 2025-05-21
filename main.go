@@ -130,7 +130,7 @@ func main() {
 		HistoryDays:   7,
 		DBPath:        getEnv("DB_PATH", "telegram_bot.db"),
 		SummaryPrompt: "Generate concise Russian summary of discussion. Highlight key topics. Format authors as name(@username). Use only these messages:\n%s\nReply in Russian. Sometimes mention the time hour of messages.",
-		SystemPrompt:  "You're an AI assistant that creates concise Russian summaries of chat discussions. Identify main topics and essence. Always reply in Russian.",
+		SystemPrompt:  "You're an AI assistant that creates concise Russian summaries of chat discussions. Identify main topics and essence. Always reply in Russian. Do not answer think.",
 		AnekdotPrompt: "Using these messages, create a short funny joke in Russian, loosely related to discussion. Format as one cohesive text. Don't use usernames:\n%s\nReply in Russian only.",
 		TopicPrompt:   "Using these messages, create a short, funny discussion topic in Russian, loosely related to the previous conversation. Format it as one cohesive text. Add start topic question of disscussion. Do not use usernames:\n%s\nReply in Russian only.",
 	}
