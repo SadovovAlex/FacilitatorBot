@@ -22,7 +22,7 @@ import (
 
 const CHECK_HOURS = -20        // hours get DB messages
 const AI_REQUEST_TIMEOUT = 300 // seconds for AI request
-const LIMIT_MSG = 200          //лимит сообщений запрощенных для /summary
+const LIMIT_MSG = 100          //лимит сообщений запрощенных для /summary
 
 // Config структура для конфигурации бота
 type Config struct {
@@ -294,33 +294,28 @@ func (b *Bot) processMessage(message *tgbotapi.Message) {
 
 }
 
-func (b *Bot) canBotReadMessages(chatID int64) bool {
-	member, err := b.tgBot.GetChatMember(tgbotapi.GetChatMemberConfig{
-		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
-			ChatID: chatID,
-			UserID: b.tgBot.Self.ID,
-		},
-	})
-
-	if err != nil {
-		log.Printf("Ошибка проверки прав: %v", err)
-		return false
-	}
-
-	// Бот может читать сообщения если он администратор или обычный участник
-	return member.Status == "administrator" || member.Status == "member"
-}
-
 // handleCommand обрабатывает команды бота
 func (b *Bot) handleCommand(message *tgbotapi.Message) {
-	// Разрешенные пользователи
-	allowedUsers := map[int64]bool{
+	// Разрешенные пользователи (администраторы)
+	allowedAdmins := map[int64]bool{
 		152657363: true, //@wrwfx
 		233088195: true,
 	}
 
+	// Разрешенные чаты (группы, супергруппы)
+	allowedChats := map[int64]bool{
+		-1002478281670: true, // Атипичный чат
+		-1002631108476: true, //AdminBot
+	}
+
+	if !allowedChats[message.Chat.ID] {
+		b.sendMessage(message.Chat.ID, "Извините, я не работаю в этом чате.")
+		return
+	}
+
 	// Проверяем, есть ли пользователь в списке разрешенных
-	if message.From != nil && !allowedUsers[message.From.ID] {
+	//if message.From != nil && !allowedUsers[message.From.ID] {
+	if message.From != nil {
 		b.sendMessage(message.Chat.ID, "Не хочу выполнять вашу команду.")
 		return
 	}
@@ -338,7 +333,7 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.sendMessage(message.Chat.ID, "Привет! Я бот для создания кратких пересказов обсуждений. Используй /summary для получения сводки.")
 	case "help":
 		b.sendMessage(message.Chat.ID, b.getHelp())
-	case "ping":
+	case "ping", "пинг":
 		b.sendMessage(message.Chat.ID, "pong")
 	case "summary", "саммари":
 		// Обработка параметра количества сообщений (по умолчанию 50)
@@ -363,6 +358,27 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.handleAnekdotRequest(message)
 	case "tema", "topic":
 		b.handleTopicRequest(message)
+	case "say", "сказать":
+		// Команда для отправки сообщения от имени бота
+		if message.From != nil && allowedAdmins[message.From.ID] {
+			text := message.CommandArguments()
+			if text == "" {
+				b.sendMessage(message.Chat.ID, "Использование: /say [текст]")
+				return
+			}
+
+			// Отправляем сообщение
+			b.sendMessage(message.Chat.ID, text)
+
+			// Удаляем команду администратора
+			deleteMsg := tgbotapi.NewDeleteMessage(message.Chat.ID, message.MessageID)
+			_, err := b.tgBot.Request(deleteMsg)
+			if err != nil {
+				log.Printf("Не удалось удалить сообщение: %v", err)
+			}
+		} else {
+			b.sendMessage(message.Chat.ID, "У вас нет прав.")
+		}
 	default:
 		b.sendMessage(message.Chat.ID, "Неизвестная команда. Используйте /help для списка команд.")
 	}

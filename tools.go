@@ -8,6 +8,23 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+func (b *Bot) canBotReadMessages(chatID int64) bool {
+	member, err := b.tgBot.GetChatMember(tgbotapi.GetChatMemberConfig{
+		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
+			ChatID: chatID,
+			UserID: b.tgBot.Self.ID,
+		},
+	})
+
+	if err != nil {
+		log.Printf("Ошибка проверки прав: %v", err)
+		return false
+	}
+
+	// Бот может читать сообщения если он администратор или обычный участник
+	return member.Status == "administrator" || member.Status == "member"
+}
+
 // isBotMentioned проверяет, обращается ли сообщение к боту
 func (b *Bot) isBotMentioned(message *tgbotapi.Message) bool {
 	// Приводим текст к нижнему регистру для регистронезависимого сравнения
