@@ -314,11 +314,10 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 	}
 
 	// Проверяем, есть ли пользователь в списке разрешенных
-	//if message.From != nil && !allowedUsers[message.From.ID] {
-	if message.From != nil {
-		b.sendMessage(message.Chat.ID, "Не хочу выполнять вашу команду.")
-		return
-	}
+	// if message.From != nil && !allowedUsers[message.From.ID] {
+	// 	b.sendMessage(message.Chat.ID, "Не хочу выполнять вашу команду.")
+	// 	return
+	// }
 
 	// Проверяем, может ли бот видеть сообщения в этом чате
 	if message.Chat.IsGroup() || message.Chat.IsSuperGroup() {
