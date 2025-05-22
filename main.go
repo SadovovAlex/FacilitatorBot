@@ -34,6 +34,7 @@ type Config struct {
 	SystemPrompt  string
 	AnekdotPrompt string
 	TopicPrompt   string
+	ReplyPrompt   string
 	HistoryDays   int    // Сколько дней хранить историю
 	DBPath        string // Путь к файлу SQLite
 }
@@ -134,6 +135,7 @@ func main() {
 		SystemPrompt:  "You're an AI assistant that creates concise Russian summaries of chat discussions. Identify main topics and essence. Always reply in Russian. Do not answer think.",
 		AnekdotPrompt: "Using these messages, create a short funny joke in Russian, loosely related to discussion. Format as one cohesive text. Don't use usernames:\n%s\nReply in Russian only.",
 		TopicPrompt:   "Using these messages, create a short, funny discussion topic in Russian, loosely related to the previous conversation. Format it as one cohesive text. Add start topic question of disscussion. Do not use usernames:\n%s\nReply in Russian only.",
+		ReplyPrompt:   "Create a short ansver for user questrion, in Russian. Format it as one cohesive text. Do not use usernames:\n%s\nReply in Russian only.",
 	}
 
 	// Проверка обязательных переменных
@@ -287,6 +289,15 @@ func (b *Bot) processMessage(message *tgbotapi.Message) {
 		return
 	}
 
+	// Обработка reply-сообщений
+	if message.ReplyToMessage != nil {
+		// Проверяем, является ли reply на сообщение бота
+		if message.ReplyToMessage.From != nil && message.ReplyToMessage.From.ID == b.tgBot.Self.ID {
+			b.handleReplyToBot(message)
+			return
+		}
+	}
+
 	// Сохранение сообщений из групп
 	if message.Chat.IsGroup() || message.Chat.IsSuperGroup() {
 		b.storeMessage(message)
@@ -306,6 +317,7 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 	allowedChats := map[int64]bool{
 		-1002478281670: true, // Атипичный чат
 		-1002631108476: true, //AdminBot
+		-1002407860030: true, //AdminBot2
 	}
 
 	if !allowedChats[message.Chat.ID] {
@@ -822,4 +834,29 @@ func (b *Bot) isChatAllowed(chatID int64) bool {
 		}
 	}
 	return false
+}
+
+// handleReplyToBot обрабатывает ответы на сообщения бота
+func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
+	// Здесь можно реализовать логику обработки ответов на сообщения бота
+	// Например:
+	log.Printf("Пользователь %d ответил на сообщение бота: %s", message.From.ID, message.Text)
+
+	// Можно проверить текст исходного сообщения бота, на которое ответили
+	//originalBotMessage := message.ReplyToMessage.Text
+
+	//b.sendMessage(message.Chat.ID, "Я получил ваш ответ: "+message.Text)
+	// Создание сводки с помощью локальной LLM
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.ReplyPrompt, message.Text), message.Chat.ID)
+
+	if err != nil {
+		log.Printf("Ошибка генерации reply: %v", err)
+		b.sendMessage(message.Chat.ID, "Что-то мои мозги потекли.")
+		return
+	}
+
+	fmt.Printf("Resp AI: %v", summary)
+
+	b.sendMessage(message.Chat.ID, summary+" @"+message.From.UserName)
+
 }
