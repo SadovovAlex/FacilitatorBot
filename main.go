@@ -382,26 +382,32 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.sendMessage(message.Chat.ID, b.getHelp())
 
 	case "ping", "пинг":
-		start := time.Now()
+		// Фиксируем время получения команды
+		commandReceiveTime := time.Now()
 
-		// Пинг базы данных
-		dbPingStart := time.Now()
-		err := b.pingDB()
-		if err != nil {
-			log.Printf("Ошибка соединения с БД: %v", err)
-			b.sendMessage(message.Chat.ID, "Ошибка соединения с БД")
-			return
-		}
-		dbPingElapsed := time.Since(dbPingStart)
+		// Отправляем первый ответ
+		b.sendMessage(message.Chat.ID, "pong")
 
-		//b.sendMessage(message.Chat.ID, "pong")
-		elapsed := time.Since(start)
+		// Вычисляем время обработки
+		processingTime := time.Since(commandReceiveTime)
 
-		messageTime := message.Time() // Вызов функции для получения времени сообщения
-		timeDiff := time.Now().UTC().Sub(messageTime.UTC())
+		// Получаем время сообщения с учетом локального времени сервера
+		messageTime := time.Unix(int64(message.Date), 0)
+		timeDiff := time.Since(messageTime)
 
-		b.sendMessage(message.Chat.ID, fmt.Sprintf("Pong %d ms / Время обработки %d ms / Пинг БД %d ms\nВремя: %s UTC\nРазница времени: %s",
-			elapsed.Milliseconds(), elapsed.Milliseconds(), dbPingElapsed.Milliseconds(), time.Now().UTC().Format("2 января 2006 г. 15:04:05"), timeDiff))
+		// Формируем детализированный ответ
+		response := fmt.Sprintf(
+			"🏓 Pong!\n"+
+				"⏱ Время обработки: %d ms\n"+
+				"🕒 Время сервера: %s\n"+
+				"⏳ Задержка сообщения: %s",
+			processingTime.Milliseconds(),
+			time.Now().Format("02.01.2006 15:04:05 MST"),
+			formatDuration(timeDiff),
+		)
+
+		// Отправляем расширенную информацию
+		b.sendMessage(message.Chat.ID, response)
 
 	case "summary", "саммари":
 		// Обработка параметра количества сообщений (по умолчанию 50)

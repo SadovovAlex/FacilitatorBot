@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -207,6 +208,21 @@ func (b *Bot) getUserByID(userID int64) (*tgbotapi.User, error) {
 		return nil, err
 	}
 	return &user, nil
+}
+
+// formatDuration форматирует duration в читаемый вид
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+
+	if d < time.Second {
+		return fmt.Sprintf("%d ms", d.Milliseconds())
+	}
+
+	if d < time.Minute {
+		return fmt.Sprintf("%.1f сек", d.Seconds())
+	}
+
+	return fmt.Sprintf("%d мин %d сек", int(d.Minutes()), int(d.Seconds())%60)
 }
 
 // Вспомогательная функция для определения типа сообщения
