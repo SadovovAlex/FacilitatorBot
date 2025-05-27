@@ -12,9 +12,9 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-func (b *Bot) generateAiRequest(systemPrompt string, prompt string, chatID int64) (string, error) {
+func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgbotapi.Message) (string, error) {
 	// Отправляем индикатор печати
-	if _, err := b.tgBot.Request(tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)); err != nil {
+	if _, err := b.tgBot.Request(tgbotapi.NewChatAction(message.Chat.ID, tgbotapi.ChatTyping)); err != nil {
 		log.Printf("Ошибка отправки индикатора печати: %v", err)
 	}
 	// Запускаем горутину для периодической отправки индикатора печати, канал stopTyping не забываем закрыть!!!
@@ -26,7 +26,7 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, chatID int64
 			select {
 			case <-ticker.C:
 				// Отправляем индикатор печати
-				chatAction := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+				chatAction := tgbotapi.NewChatAction(message.Chat.ID, tgbotapi.ChatTyping)
 				if _, err := b.tgBot.Request(chatAction); err != nil {
 					log.Printf("Ошибка отправки индикатора печати: %v", err)
 				}
@@ -49,7 +49,7 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, chatID int64
 				Content: prompt,
 			},
 		},
-		Temperature: 0.6,
+		Temperature: 0.7,
 		MaxTokens:   16000,
 	}
 
@@ -58,7 +58,7 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, chatID int64
 		return "", fmt.Errorf("ошибка маршалинга запроса: %v", err)
 	}
 
-	fmt.Println("Get AI request...")
+	log.Printf("Get AI %v data: %v", b.config.LocalLLMUrl, request)
 	resp, err := b.httpClient.Post(b.config.LocalLLMUrl, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("ошибка HTTP запроса: %v", err)
@@ -74,14 +74,33 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, chatID int64
 		return "", fmt.Errorf("ошибка декодирования ответа: %v", err)
 	}
 
+	log.Printf("Resp: %v", response)
+
 	if len(response.Choices) == 0 {
 		return "", fmt.Errorf("пустой ответ от LLM")
 	}
-	fmt.Printf("Resp Tokens: %v \n", response.Usage.TotalTokens)
 
 	summary := response.Choices[0].Message.Content
 	if idx := strings.Index(summary, "--"); idx != -1 {
 		summary = summary[:idx]
+	}
+
+	// // После получения ответа от AI сохраняем информацию о токенах
+	if response.Usage.TotalTokens > 0 {
+		record := BillingRecord{
+			UserID:           message.From.ID,
+			ChatID:           message.Chat.ID,
+			Timestamp:        time.Now().Unix(),
+			Model:            response.Model,
+			PromptTokens:     response.Usage.PromptTokens,
+			CompletionTokens: response.Usage.CompletionTokens,
+			TotalTokens:      response.Usage.TotalTokens,
+			Cost:             calculateCost(response.Model, response.Usage.TotalTokens),
+		}
+
+		if err := b.SaveBillingRecord(record); err != nil {
+			log.Printf("Ошибка биллинга: %v", err)
+		}
 	}
 
 	return strings.TrimSpace(summary), nil
