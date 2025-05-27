@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -69,11 +70,51 @@ func (b *Bot) initDB() error {
 		return fmt.Errorf("ошибка создания таблицы для спасибо: %v", err)
 	}
 
+	// Создаем таблицу для хранения контекста общения
+	_, err = b.db.Exec(`
+		CREATE TABLE IF NOT EXISTS chat_context (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			chat_id INTEGER NOT NULL,
+			user_id INTEGER NOT NULL,
+			role TEXT NOT NULL,  -- 'user' или 'assistant'
+			content TEXT NOT NULL,
+			timestamp INTEGER NOT NULL,
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (chat_id) REFERENCES chats(id),
+			FOREIGN KEY (user_id) REFERENCES users(id)
+		)`)
+	if err != nil {
+		return fmt.Errorf("ошибка создания таблицы контекста: %v", err)
+	}
+
+	// Создаем таблицу биллинга токенов AI
+	_, err = b.db.Exec(`
+        CREATE TABLE IF NOT EXISTS ai_billing (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            chat_id INTEGER NOT NULL,
+            timestamp INTEGER NOT NULL,
+            model TEXT NOT NULL,
+            prompt_tokens INTEGER NOT NULL,
+            completion_tokens INTEGER NOT NULL,
+            total_tokens INTEGER NOT NULL,
+            cost REAL NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (chat_id) REFERENCES chats(id)
+        )`)
+	if err != nil {
+		return fmt.Errorf("ошибка создания таблицы биллинга AI: %v", err)
+	}
+
 	// Создаем индексы
 	_, err = b.db.Exec(`
 		CREATE INDEX IF NOT EXISTS idx_thanks_from_user ON thanks(from_user_id);
 		CREATE INDEX IF NOT EXISTS idx_thanks_to_user ON thanks(to_user_id);
 		CREATE INDEX IF NOT EXISTS idx_thanks_chat ON thanks(chat_id);
+		CREATE INDEX IF NOT EXISTS idx_context_chat_user ON chat_context(chat_id, user_id);
+		CREATE INDEX IF NOT EXISTS idx_context_timestamp ON chat_context(timestamp);
+		CREATE INDEX IF NOT EXISTS idx_ai_billing_user ON ai_billing(user_id);
+		CREATE INDEX IF NOT EXISTS idx_ai_billing_timestamp ON ai_billing(timestamp);
 		`)
 	if err != nil {
 		return err
@@ -220,21 +261,231 @@ func (b *Bot) getRecentMessages(chatID int64, limit int) ([]DBMessage, error) {
 	return messages, nil
 }
 
-// cleanupOldMessages удаляет сообщения старше HistoryDays дней
-func (b *Bot) cleanupOldMessages() {
-	for {
-		time.Sleep(1 * time.Hour) // Проверяем каждый час
+// saveContext сохраняет контекст сообщения в БД
+func (b *Bot) saveContext(chatID, userID int64, role, content string, timestamp int64) error {
+	_, err := b.db.Exec(`
+		INSERT INTO chat_context (chat_id, user_id, role, content, timestamp) 
+		VALUES (?, ?, ?, ?, ?)`,
+		chatID, userID, role, content, timestamp)
+	return err
+}
 
-		threshold := time.Now().Add(-time.Duration(b.config.HistoryDays) * 24 * time.Hour)
+// getConversationContext получает контекст общения для указанного чата и пользователя
+// limitMessages - максимальное количество сообщений для возврата (0 - без ограничения)
+// timeLimitHours - максимальный возраст сообщений в часах (0 - без ограничения)
+func (b *Bot) getConversationContext(chatID, userID int64, limitMessages int, timeLimitHours int) ([]ContextMessage, error) {
+	var query string
+	var args []interface{}
 
-		for chatID, messages := range b.chatHistories {
-			var filtered []ChatMessage
-			for _, msg := range messages {
-				if msg.Time.After(threshold) {
-					filtered = append(filtered, msg)
-				}
-			}
-			b.chatHistories[chatID] = filtered
+	query = `
+		SELECT role, content, timestamp 
+		FROM chat_context 
+		WHERE chat_id = ? AND user_id = ?
+	`
+
+	args = append(args, chatID, userID)
+
+	if timeLimitHours > 0 {
+		timeLimit := time.Now().Add(-time.Duration(timeLimitHours) * time.Hour).Unix()
+		query += " AND timestamp >= ?"
+		args = append(args, timeLimit)
+	}
+
+	query += " ORDER BY timestamp DESC"
+
+	if limitMessages > 0 {
+		query += " LIMIT ?"
+		args = append(args, limitMessages)
+	}
+
+	rows, err := b.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка запроса контекста: %v", err)
+	}
+	defer rows.Close()
+
+	var context []ContextMessage
+	for rows.Next() {
+		var msg ContextMessage
+		err := rows.Scan(&msg.Role, &msg.Content, &msg.Timestamp)
+		if err != nil {
+			return nil, fmt.Errorf("ошибка чтения контекста: %v", err)
 		}
+		context = append(context, msg)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("ошибка обработки результатов: %v", err)
+	}
+
+	// Переворачиваем порядок, чтобы хронология была правильной
+	for i, j := 0, len(context)-1; i < j; i, j = i+1, j-1 {
+		context[i], context[j] = context[j], context[i]
+	}
+
+	return context, nil
+}
+
+// DeleteUserContext удаляет контекст общения для указанного пользователя в чате
+func (b *Bot) DeleteUserContext(chatID, userID int64) error {
+	if b.db == nil {
+		return fmt.Errorf("база данных не инициализирована")
+	}
+
+	_, err := b.db.Exec(`
+        DELETE FROM chat_context 
+        WHERE chat_id = ? AND user_id = ?`,
+		chatID, userID)
+
+	if err != nil {
+		return fmt.Errorf("ошибка удаления контекста: %v", err)
+	}
+
+	log.Printf("Контекст удален для user_id %d в chat_id %d", userID, chatID)
+	return nil
+}
+
+// SaveBillingRecord сохраняет информацию об использовании токенов
+func (b *Bot) SaveBillingRecord(record BillingRecord) error {
+	_, err := b.db.Exec(`
+        INSERT INTO ai_billing 
+        (user_id, chat_id, timestamp, model, prompt_tokens, completion_tokens, total_tokens, cost)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		record.UserID,
+		record.ChatID,
+		record.Timestamp,
+		record.Model,
+		record.PromptTokens,
+		record.CompletionTokens,
+		record.TotalTokens,
+		record.Cost)
+
+	if err != nil {
+		return fmt.Errorf("ошибка сохранения записи биллинга: %v", err)
+	}
+	return nil
+}
+
+// GetChatTokenUsage возвращает статистику использования токенов в чате
+func (b *Bot) GetChatTokenUsage(chatID int64, days int) (BillingRecord, error) {
+	var result BillingRecord
+	var threshold int64
+
+	if days > 0 {
+		threshold = time.Now().Add(-time.Duration(days) * 24 * time.Hour).Unix()
+	}
+
+	query := `
+        SELECT 
+            SUM(prompt_tokens) as prompt_tokens,
+            SUM(completion_tokens) as completion_tokens,
+            SUM(total_tokens) as total_tokens,
+            SUM(cost) as cost
+        FROM ai_billing
+        WHERE chat_id = ?`
+
+	args := []interface{}{chatID}
+
+	if days > 0 {
+		query += " AND timestamp >= ?"
+		args = append(args, threshold)
+	}
+
+	err := b.db.QueryRow(query, args...).Scan(
+		&result.PromptTokens,
+		&result.CompletionTokens,
+		&result.TotalTokens,
+		&result.Cost)
+
+	if err != nil {
+		return BillingRecord{}, fmt.Errorf("ошибка получения статистики токенов: %v", err)
+	}
+
+	result.ChatID = chatID
+	return result, nil
+}
+
+func (b *Bot) GetTopUsersByTokenUsage(limit int, days int) ([]struct {
+	UserID      int64
+	TotalTokens int
+	Cost        float64
+}, error) {
+	var threshold int64
+	if days > 0 {
+		threshold = time.Now().Add(-time.Duration(days) * 24 * time.Hour).Unix()
+	}
+
+	query := `
+        SELECT 
+            user_id,
+            SUM(total_tokens) as total_tokens,
+            SUM(cost) as cost
+        FROM ai_billing`
+
+	args := []interface{}{}
+
+	if days > 0 {
+		query += " WHERE timestamp >= ?"
+		args = append(args, threshold)
+	}
+
+	query += " GROUP BY user_id ORDER BY total_tokens DESC LIMIT ?"
+	args = append(args, limit)
+
+	rows, err := b.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка запроса топ пользователей: %v", err)
+	}
+	defer rows.Close()
+
+	var result []struct {
+		UserID      int64
+		TotalTokens int
+		Cost        float64
+	}
+
+	for rows.Next() {
+		var item struct {
+			UserID      int64
+			TotalTokens int
+			Cost        float64
+		}
+		if err := rows.Scan(&item.UserID, &item.TotalTokens, &item.Cost); err != nil {
+			return nil, err
+		}
+		result = append(result, item)
+	}
+
+	return result, nil
+}
+
+// cleanupOldContext удаляет старый контекст общения
+func (b *Bot) cleanupOldContext() {
+	for {
+		time.Sleep(12 * time.Hour) // Проверяем каждые 12 часов
+		// Удаляем контекст старше 7 дней (или другого значения из конфига)
+		threshold := time.Now().Add(-time.Duration(b.config.ContextRetentionDays) * 24 * time.Hour).Unix()
+		_, err := b.db.Exec("DELETE FROM chat_context WHERE timestamp < ?", threshold)
+		if err != nil {
+			log.Printf("Ошибка очистки старого контекста: %v", err)
+		}
+	}
+}
+
+// DeleteOldMessages удаляет сообщения старше указанного количества дней
+func (b *Bot) DeleteOldMessages() error {
+	for {
+		time.Sleep(12 * time.Hour) // Проверяем каждые 12 часов
+		threshold := time.Now().Add(-time.Duration(b.config.HistoryDays) * 24 * time.Hour).Unix()
+		_, err := b.db.Exec(`
+			DELETE FROM messages 
+			WHERE timestamp < ?`,
+			threshold)
+
+		if err != nil {
+			log.Printf("ошибка удаления старых сообщений: %v", err)
+		}
+
+		log.Printf("Удалены сообщения старше %d дней", b.config.HistoryDays)
 	}
 }
