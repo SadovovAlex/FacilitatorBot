@@ -380,8 +380,29 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.sendMessage(message.Chat.ID, "Привет! Я бот для создания кратких пересказов обсуждений. Используй /summary для получения сводки.")
 	case "help":
 		b.sendMessage(message.Chat.ID, b.getHelp())
+
 	case "ping", "пинг":
-		b.sendMessage(message.Chat.ID, "pong")
+		start := time.Now()
+
+		// Пинг базы данных
+		dbPingStart := time.Now()
+		err := b.pingDB()
+		if err != nil {
+			log.Printf("Ошибка соединения с БД: %v", err)
+			b.sendMessage(message.Chat.ID, "Ошибка соединения с БД")
+			return
+		}
+		dbPingElapsed := time.Since(dbPingStart)
+
+		//b.sendMessage(message.Chat.ID, "pong")
+		elapsed := time.Since(start)
+
+		messageTime := message.Time() // Вызов функции для получения времени сообщения
+		timeDiff := time.Now().UTC().Sub(messageTime.UTC())
+
+		b.sendMessage(message.Chat.ID, fmt.Sprintf("Pong %d ms / Время обработки %d ms / Пинг БД %d ms\nВремя: %s UTC\nРазница времени: %s",
+			elapsed.Milliseconds(), elapsed.Milliseconds(), dbPingElapsed.Milliseconds(), time.Now().UTC().Format("2 января 2006 г. 15:04:05"), timeDiff))
+
 	case "summary", "саммари":
 		// Обработка параметра количества сообщений (по умолчанию 50)
 		args := strings.Fields(message.CommandArguments())

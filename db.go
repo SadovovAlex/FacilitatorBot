@@ -8,6 +8,11 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// pingDB проверяет соединение с базой данных
+func (b *Bot) pingDB() error {
+	return b.db.Ping()
+}
+
 // initDB инициализирует базу данных
 func (b *Bot) initDB() error {
 	// Создаем таблицу чатов
