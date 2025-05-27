@@ -361,10 +361,6 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		return
 	}
 
-	if message.From != nil {
-		return
-	}
-
 	// Проверяем, есть ли пользователь в списке разрешенных
 	// if message.From != nil && !allowedUsers[message.From.ID] {
 	// 	b.sendMessage(message.Chat.ID, "Не хочу выполнять вашу команду.")
