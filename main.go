@@ -26,35 +26,40 @@ const LIMIT_MSG = 100          //лимит сообщений запрощен�
 
 // Config структура для конфигурации бота
 type Config struct {
-	TelegramToken string
-	LocalLLMUrl   string // URL локальной LLM (например "http://localhost:1234/v1/chat/completions")
-	AiModelName   string
-	AllowedGroups []int64
-	SummaryPrompt string
-	SystemPrompt  string
-	AnekdotPrompt string
-	TopicPrompt   string
-	ReplyPrompt   string
-	HistoryDays   int    // Сколько дней хранить историю
-	DBPath        string // Путь к файлу SQLite
+	TelegramToken        string
+	LocalLLMUrl          string // URL локальной LLM (например "http://localhost:1234/v1/chat/completions")
+	AiModelName          string
+	AllowedGroups        []int64
+	SummaryPrompt        string
+	SystemPrompt         string
+	AnekdotPrompt        string
+	TopicPrompt          string
+	ReplyPrompt          string
+	HistoryDays          int                // Сколько дней хранить историю
+	DBPath               string             // Путь к файлу SQLite
+	ContextMessageLimit  int                // размер хранения контекста сообщений от пользователя
+	ContextTimeLimit     int                // размер в часах хранения контекста
+	ContextRetentionDays int                //удаление контекста диалога с пользователем из БД
+	TokenCosts           map[string]float64 // стоимость токенов для разных моделей
+
 }
 
 // Bot структура основного бота
 type Bot struct {
-	config        Config
-	tgBot         *tgbotapi.BotAPI
-	httpClient    *http.Client
-	db            *sql.DB
-	chatHistories map[int64][]ChatMessage // История сообщений по чатам
-	lastSummary   map[int64]time.Time     // Время последней сводки по чатам
+	config     Config
+	tgBot      *tgbotapi.BotAPI
+	httpClient *http.Client
+	db         *sql.DB
+	//chatHistories map[int64][]ChatMessage // История сообщений по чатам
+	lastSummary map[int64]time.Time // Время последней сводки по чатам
 }
 
 // ChatMessage структура для хранения сообщений
-type ChatMessage struct {
-	User string
-	Text string
-	Time time.Time
-}
+// type ChatMessage struct {
+// 	User string
+// 	Text string
+// 	Time time.Time
+// }
 
 // DB структуры
 type DBChat struct {
@@ -105,9 +110,47 @@ type LocalLLMResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	Model string `json:"model"`
 	Usage struct {
+		CompletionTokens        int `json:"completion_tokens"`
+		CompletionTokensDetails struct {
+			AcceptedPredictionTokens int `json:"accepted_prediction_tokens"`
+			AudioTokens              int `json:"audio_tokens"`
+			ReasoningTokens          int `json:"reasoning_tokens"`
+			RejectedPredictionTokens int `json:"rejected_prediction_tokens"`
+		} `json:"completion_tokens_details"`
+		PromptTokens        int `json:"prompt_tokens"`
+		PromptTokensDetails struct {
+			AudioTokens  int `json:"audio_tokens"`
+			CachedTokens int `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
 		TotalTokens int `json:"total_tokens"`
 	} `json:"usage"`
+}
+
+// BillingRecord представляет запись о использовании токенов AI
+type BillingRecord struct {
+	UserID           int64
+	ChatID           int64
+	Timestamp        int64
+	Model            string
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
+	Cost             float64
+}
+
+// Разрешенные пользователи (администраторы)
+var allowedAdmins = map[int64]bool{
+	152657363: true, //@wrwfx
+	233088195: true,
+}
+
+// Разрешенные чаты (группы, супергруппы)
+var allowedChats = map[int64]bool{
+	-1002478281670: true, // Атипичный чат
+	-1002631108476: true, //AdminBot
+	-1002407860030: true, //AdminBot2
 }
 
 func main() {
@@ -122,20 +165,24 @@ func main() {
 
 	// Загрузка конфигурации
 	config := Config{
-		TelegramToken: getEnv("TELEGRAM_BOT_TOKEN", ""),
-		LocalLLMUrl:   getEnv("AI_LOCAL_LLM_URL", "http://localhost:1234/v1/chat/completions"),
-		AiModelName:   getEnv("AI_MODEL", ""),
-		AllowedGroups: []int64{},
-		//SummaryPrompt: "Создай краткую сводку обсуждения. Выдели ключевые темы обсуждения. Авторы сообщений в формате @username. Будь  информативным. Используй только эти сообщения:\n%s",
-		//SystemPrompt:  "Ты полезный ассистент, который создает краткие содержательные пересказы обсуждений в чатах. Выделяющий тему и суть разговора.",
-		//AnekdotPrompt: "Используя предоставленные сообщения пользователей, придумайте короткий, забавный анекдот, частично связанный с обсуждением. Напиши анекдот в виде одного законченного текста. Не используй в тексте анекдота username, придумай:\n%s",
-		HistoryDays:   7,
-		DBPath:        getEnv("DB_PATH", "telegram_bot.db"),
-		SummaryPrompt: "Generate concise Russian summary of discussion. Highlight key topics. Format authors as name(@username). Use only these messages:\n%s\nReply in Russian. Sometimes mention the time hour of messages.",
-		SystemPrompt:  "You're an AI assistant that creates concise Russian summaries of chat discussions. Identify main topics and essence. Always reply in Russian. Do not answer think.",
-		AnekdotPrompt: "Using these messages, create a short funny joke in Russian, loosely related to discussion. Format as one cohesive text. Don't use usernames:\n%s\nReply in Russian only.",
-		TopicPrompt:   "Using these messages, create a short, funny discussion topic in Russian, loosely related to the previous conversation. Format it as one cohesive text. Add start topic question of disscussion. Do not use usernames:\n%s\nReply in Russian only.",
-		ReplyPrompt:   "Create a short ansver for user questrion, in Russian. Format it as one cohesive text. Do not use usernames:\n%s\nReply in Russian only.",
+		TelegramToken:        getEnv("TELEGRAM_BOT_TOKEN", ""),
+		LocalLLMUrl:          getEnv("AI_LOCAL_LLM_URL", "http://localhost:1234/v1/chat/completions"),
+		AiModelName:          getEnv("AI_MODEL", ""),
+		AllowedGroups:        []int64{},
+		HistoryDays:          30, //DB save msg days
+		ContextMessageLimit:  10,
+		ContextTimeLimit:     4,
+		ContextRetentionDays: 7,
+		DBPath:               getEnv("DB_PATH", "telegram_bot.db"),
+		SummaryPrompt:        "Generate concise Russian summary of discussion. Highlight key topics. Format authors as name(@username). Use only these messages:\n%s\nReply in Russian. Sometimes mention the time hour of messages.",
+		SystemPrompt:         "You're an AI assistant that creates concise Russian summaries of chat discussions. Identify main topics and essence. Always reply in Russian. Do not answer think.",
+		AnekdotPrompt:        "Using these messages, create a short funny joke in Russian, loosely related to discussion. Format as one cohesive text. Don't use usernames:\n%s\nReply in Russian only.",
+		TopicPrompt:          "Using these messages, create a short, funny discussion topic in Russian, loosely related to the previous conversation. Format it as one cohesive text. Add start topic question of disscussion. Do not use usernames:\n%s\nReply in Russian only.",
+		ReplyPrompt:          "Create a short ansver for user question only answer if user ask it. Format it as one cohesive text. Do not use usernames:\n%s\nReply in if user ask Russian and reply another language if user ask.",
+		TokenCosts: map[string]float64{
+			"deepseek": 0.0001,
+			"openai":   0.001,
+		},
 	}
 
 	// Проверка обязательных переменных
@@ -209,12 +256,12 @@ func NewBot(config Config) (*Bot, error) {
 	}
 
 	return &Bot{
-		config:        config,
-		tgBot:         tgBot,
-		httpClient:    &http.Client{Timeout: AI_REQUEST_TIMEOUT * time.Second},
-		db:            db,
-		chatHistories: make(map[int64][]ChatMessage),
-		lastSummary:   make(map[int64]time.Time),
+		config:     config,
+		tgBot:      tgBot,
+		httpClient: &http.Client{Timeout: AI_REQUEST_TIMEOUT * time.Second},
+		db:         db,
+		//chatHistories: make(map[int64][]ChatMessage),
+		lastSummary: make(map[int64]time.Time),
 	}, nil
 }
 
@@ -233,8 +280,9 @@ func (b *Bot) Run() {
 	u.Timeout = 60
 	updates := b.tgBot.GetUpdatesChan(u)
 
-	// Очистка старых сообщений
-	go b.cleanupOldMessages()
+	// Очистка старых сообщений в БД
+	go b.DeleteOldMessages()
+	go b.cleanupOldContext()
 
 	for update := range updates {
 		if update.Message != nil {
@@ -246,7 +294,7 @@ func (b *Bot) Run() {
 			}
 
 			if update.Message.Chat != nil {
-				logMsg += fmt.Sprintf("в %s(%d) ", getChatTitle(update.Message.Chat), update.Message.Chat.ID)
+				logMsg += fmt.Sprintf("в %s(%d) ", getChatTitle(update.Message), update.Message.Chat.ID)
 			}
 
 			// Добавляем либо текст, либо подпись, либо отметку о медиа
@@ -307,21 +355,13 @@ func (b *Bot) processMessage(message *tgbotapi.Message) {
 
 // handleCommand обрабатывает команды бота
 func (b *Bot) handleCommand(message *tgbotapi.Message) {
-	// Разрешенные пользователи (администраторы)
-	allowedAdmins := map[int64]bool{
-		152657363: true, //@wrwfx
-		233088195: true,
-	}
-
-	// Разрешенные чаты (группы, супергруппы)
-	allowedChats := map[int64]bool{
-		-1002478281670: true, // Атипичный чат
-		-1002631108476: true, //AdminBot
-		-1002407860030: true, //AdminBot2
-	}
 
 	if !allowedChats[message.Chat.ID] {
 		b.sendMessage(message.Chat.ID, "Извините, я не работаю в этом чате.")
+		return
+	}
+
+	if message.From != nil {
 		return
 	}
 
@@ -365,13 +405,19 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 	// 	b.handleSummaryFromRequest(message)
 	case "stat", "stats":
 		b.handleStatsRequest(message)
-	case "anekdot":
+	case "aistat", "aistats":
+		if allowedAdmins[message.From.ID] {
+			b.handleGetTopAIUsers(message)
+		}
+	case "anekdot", "анекдот":
 		b.handleAnekdotRequest(message)
 	case "tema", "topic":
 		b.handleTopicRequest(message)
+	case "clear", "забудь":
+		b.DeleteUserContext(message.Chat.ID, message.From.ID)
 	case "say", "сказать":
 		// Команда для отправки сообщения от имени бота
-		if message.From != nil && allowedAdmins[message.From.ID] {
+		if allowedAdmins[message.From.ID] {
 			text := message.CommandArguments()
 			if text == "" {
 				b.sendMessage(message.Chat.ID, "Использование: /say [текст]")
@@ -397,10 +443,23 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 
 // handleBotMention обрабатывает сообщения, адресованные боту
 func (b *Bot) handleBotMention(message *tgbotapi.Message) {
+	if message.From == nil {
+		log.Println("Сообщение без отправителя")
+		return
+	}
 	// Удаляем ключевое слово или упоминание из текста
 	cleanText := b.removeBotMention(message.Text)
 	// Обрабатываем очищенный текст сообщения
 	switch {
+	case strings.Contains(strings.ToLower(cleanText), "забудь"):
+		log.Println("Удаляю контекст")
+		err := b.DeleteUserContext(message.Chat.ID, message.From.ID)
+		if err != nil {
+			log.Printf("Ошибка удаления контекста: %v", err)
+			b.sendMessage(message.Chat.ID, "Не удалось очистить контекст")
+			return
+		}
+		b.sendMessage(message.Chat.ID, fmt.Sprintf("Все забыл =) %s", getUserName(message.From)))
 	case strings.Contains(strings.ToLower(cleanText), "ping"),
 		strings.Contains(strings.ToLower(cleanText), "пинг"):
 		b.sendMessage(message.Chat.ID, "pong")
@@ -425,8 +484,9 @@ func (b *Bot) handleBotMention(message *tgbotapi.Message) {
 		strings.Contains(strings.ToLower(cleanText), "команды"):
 		b.sendMessage(message.Chat.ID, b.getHelp())
 	default:
-		b.sendMessage(message.Chat.ID, "Я вас понял, но создатель не научил меня ответить на '"+strings.ToLower(cleanText)+"'.\n\n"+b.getHelp())
+		//b.sendMessage(message.Chat.ID, "Я вас понял, но создатель не научил меня ответить на '"+strings.ToLower(cleanText)+"'.\n\n"+b.getHelp())
 		//TODO добавить отправку в AI запроса
+		b.handleReplyToBot(message)
 	}
 }
 
@@ -469,10 +529,10 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message, count int) {
 			msg.Text)
 	}
 
-	fmt.Println(messagesText.String())
+	//fmt.Println(messagesText.String())
 
 	// Создание сводки с помощью локальной LLM
-	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.SummaryPrompt, messagesText.String()), chatID)
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.SummaryPrompt, messagesText.String()), message)
 
 	if err != nil {
 		log.Printf("Ошибка генерации сводки: %v", err)
@@ -519,6 +579,72 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message, count int) {
 // 		message.ReplyToMessage.ForwardFromChat.Title, summary))
 // }
 
+// handleGetTopAIUsers возвращает топ пользователей по использованию токенов в читаемом формате
+func (b *Bot) handleGetTopAIUsers(message *tgbotapi.Message) {
+	// Проверяем права пользователя (только админы могут запрашивать статистику)
+	// if !b.isUserAdmin(message.Chat.ID, message.From.ID) {
+	// 	b.sendMessage(message.Chat.ID, "🚫 У вас нет прав.")
+	// 	return
+	// }
+
+	// Получаем топ 10 пользователей за последние 30 дней
+	topUsers, err := b.GetTopUsersByTokenUsage(10, 30)
+	if err != nil {
+		log.Printf("Ошибка получения топ пользователей: %v", err)
+		b.sendMessage(message.Chat.ID, "⚠️ Произошла ошибка при получении статистики.")
+		return
+	}
+
+	if len(topUsers) == 0 {
+		b.sendMessage(message.Chat.ID, "📊 Нет данных об использовании AI за последние 30 дней.")
+		return
+	}
+
+	// Получаем общую статистику по чату
+	chatStats, err := b.GetChatTokenUsage(message.Chat.ID, 30)
+	if err != nil {
+		log.Printf("Ошибка получения статистики чата: %v", err)
+	}
+
+	// Формируем красивое сообщение
+	var reply strings.Builder
+	reply.WriteString("📊 <b>Топ пользователей по использованию AI</b>\n")
+	reply.WriteString("⏱ Период: последние 30 дней\n\n")
+
+	// Добавляем общую статистику по чату
+	if chatStats.TotalTokens > 0 {
+		reply.WriteString("💬 <b>Общее по чату:</b>\n")
+		reply.WriteString(fmt.Sprintf("🪙 Токены: %d (запросы: %d, ответы: %d)\n",
+			chatStats.TotalTokens, chatStats.PromptTokens, chatStats.CompletionTokens))
+		reply.WriteString(fmt.Sprintf("💵 Примерная стоимость: $%.2f\n\n", chatStats.Cost))
+	}
+
+	reply.WriteString("🏆 <b>Топ пользователей:</b>\n")
+
+	for i, user := range topUsers {
+		// Получаем информацию о пользователе
+		username, err := b.getUserByID(user.UserID)
+		if err != nil || username == nil {
+			continue
+		}
+
+		// Форматируем строку для каждого пользователя
+		reply.WriteString(fmt.Sprintf("%d. %s:\n", i+1, username))
+		reply.WriteString(fmt.Sprintf("   🪙 Токены: %d\n", user.TotalTokens))
+		reply.WriteString(fmt.Sprintf("   💵 Примерная стоимость: $%.2f\n\n", user.Cost))
+	}
+
+	// Добавляем подсказку
+	//reply.WriteString("\nℹ️ Для получения детальной статистики используйте /aitokens @username")
+
+	// Отправляем сообщение
+	msg := tgbotapi.NewMessage(message.Chat.ID, reply.String())
+	msg.ParseMode = "HTML"
+	if _, err := b.tgBot.Send(msg); err != nil {
+		log.Printf("Ошибка отправки сообщения: %v", err)
+	}
+}
+
 // handleSummaryRequest обрабатывает запрос на сводку текущего чата
 func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 	chatID := message.Chat.ID
@@ -552,7 +678,7 @@ func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 
 	// Создание сводки с помощью локальной LLM
 	//summary, err := b.generateAnekdot(messagesText.String(), chatID)
-	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.AnekdotPrompt, messagesText.String()), chatID)
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.AnekdotPrompt, messagesText.String()), message)
 
 	if err != nil {
 		log.Printf("Ошибка генерации анекдота: %v", err)
@@ -601,7 +727,7 @@ func (b *Bot) handleTopicRequest(message *tgbotapi.Message) {
 
 	// Создание сводки с помощью локальной LLM
 	//summary, err := b.generateTopic(messagesText.String(), chatID)
-	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.TopicPrompt, messagesText.String()), chatID)
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.TopicPrompt, messagesText.String()), message)
 
 	if err != nil {
 		log.Printf("Ошибка генерации темы обсуждений: %v", err)
@@ -754,14 +880,6 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 		log.Printf("Бот не может читать сообщения в чате %d", chatID)
 		return
 	}
-	// Получаем имя пользователя
-	userName := "Unknown"
-	if message.From != nil {
-		userName = message.From.UserName
-		if userName == "" {
-			userName = strings.TrimSpace(fmt.Sprintf("%s %s", message.From.FirstName, message.From.LastName))
-		}
-	}
 
 	// Используем текст или подпись (для медиа-сообщений)
 	text := message.Text
@@ -769,21 +887,21 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 		text = message.Caption
 	}
 
-	// Создаем структуру сообщения
-	msg := ChatMessage{
-		User: userName,
-		Text: text,
-		Time: time.Now(),
-	}
+	// // Создаем структуру сообщения
+	// msg := ChatMessage{
+	// 	User: userName,
+	// 	Text: text,
+	// 	Time: time.Now(),
+	// }
 
-	// Инициализируем историю чата если нужно
-	if _, exists := b.chatHistories[chatID]; !exists {
-		b.chatHistories[chatID] = []ChatMessage{}
-	}
+	// // Инициализируем историю чата если нужно
+	// if _, exists := b.chatHistories[chatID]; !exists {
+	// 	b.chatHistories[chatID] = []ChatMessage{}
+	// }
 
-	// Добавляем сообщение в историю
-	b.chatHistories[chatID] = append(b.chatHistories[chatID], msg)
-	//log.Printf("Сохранено %d: [%v]%s: %s", chatID, userID, msg.User, msg.Text)
+	// // Добавляем сообщение в историю
+	// b.chatHistories[chatID] = append(b.chatHistories[chatID], msg)
+	// //log.Printf("Сохранено %d: [%v]%s: %s", chatID, userID, msg.User, msg.Text)
 
 	// Сохраняем чат и пользователя в БД
 	err := b.saveChat(message.Chat)
@@ -838,25 +956,78 @@ func (b *Bot) isChatAllowed(chatID int64) bool {
 
 // handleReplyToBot обрабатывает ответы на сообщения бота
 func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
-	// Здесь можно реализовать логику обработки ответов на сообщения бота
-	// Например:
-	log.Printf("Пользователь %d ответил на сообщение бота: %s", message.From.ID, message.Text)
+	log.Printf("Пользователь %d обратился: %s", message.From.ID, message.Text)
 
-	// Можно проверить текст исходного сообщения бота, на которое ответили
-	//originalBotMessage := message.ReplyToMessage.Text
+	// Сохраняем контекст пользователя
+	err := b.saveContext(
+		message.Chat.ID,
+		message.From.ID,
+		"user",
+		message.Text,
+		message.Time().Unix(),
+	)
+	if err != nil {
+		log.Printf("Ошибка сохранения контекста: %v", err)
+	}
 
-	//b.sendMessage(message.Chat.ID, "Я получил ваш ответ: "+message.Text)
+	// Получаем историю диалога (последние 30 сообщений или за последние 24 часа)
+	context, err := b.getConversationContext(
+		message.Chat.ID,
+		message.From.ID,
+		b.config.ContextMessageLimit, // например 30
+		b.config.ContextTimeLimit,    // например 24
+	)
+	if err != nil {
+		log.Printf("Ошибка получения контекста: %v", err)
+	}
+
+	// Формируем промпт с учетом контекста
+	var prompt string
+	if len(context) > 0 {
+		prompt = "Контекст предыдущего общения:\n"
+		for _, msg := range context {
+			prompt += fmt.Sprintf("%s: %s\n", msg.Role, msg.Content)
+		}
+		prompt += "\nНовый запрос: " + message.Text
+	} else {
+		prompt = message.Text
+	}
+
+	log.Printf("prompt: %v", prompt)
+
 	// Создание сводки с помощью локальной LLM
-	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.ReplyPrompt, message.Text), message.Chat.ID)
-
+	summary, err := b.generateAiRequest(
+		//b.config.ReplyPrompt,
+		b.config.SystemPrompt,
+		//fmt.Sprintf(b.config.ReplyPrompt, prompt),
+		prompt,
+		message,
+	)
 	if err != nil {
 		log.Printf("Ошибка генерации reply: %v", err)
 		b.sendMessage(message.Chat.ID, "Что-то мои мозги потекли.")
 		return
 	}
 
+	// Сохраняем ответ бота в контекст
+	err = b.saveContext(
+		message.Chat.ID,
+		message.From.ID,
+		"assistant",
+		summary,
+		time.Now().Unix(),
+	)
+	if err != nil {
+		log.Printf("Ошибка сохранения контекста ответа: %v", err)
+	}
+
 	fmt.Printf("Resp AI: %v", summary)
-
 	b.sendMessage(message.Chat.ID, summary+" @"+message.From.UserName)
+}
 
+// ContextMessage представляет сообщение в контексте диалога
+type ContextMessage struct {
+	Role      string // "user" или "assistant"
+	Content   string
+	Timestamp int64
 }

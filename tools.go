@@ -8,6 +8,16 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// Вспомогательная функция для расчета стоимости
+func calculateCost(model string, tokens int) float64 {
+	// Здесь должна быть ваша логика расчета стоимости
+	// Например, для GPT-4:
+	if strings.Contains(model, "gpt-4") {
+		return float64(tokens) * 0.00006 // примерная стоимость
+	}
+	return float64(tokens) * 0.000002 // для других моделей
+}
+
 func (b *Bot) canBotReadMessages(chatID int64) bool {
 	member, err := b.tgBot.GetChatMember(tgbotapi.GetChatMemberConfig{
 		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
@@ -31,7 +41,7 @@ func (b *Bot) isBotMentioned(message *tgbotapi.Message) bool {
 	lowerText := strings.ToLower(message.Text)
 
 	// Проверяем обращения по ключевым словам
-	keywords := []string{"sheriff:", "шериф:", "шерифф:"}
+	keywords := []string{"sheriff", "шериф", "шерифф"}
 	for _, kw := range keywords {
 		if strings.HasPrefix(lowerText, kw) {
 			return true
@@ -63,7 +73,7 @@ func (b *Bot) getHelp() string {
 /tema - продолжим обсуждать тему
 
 Также вы можете обратиться ко мне напрямую:
-- Начиная сообщение с "Sheriff:", "Шериф:" или "Шерифф:"
+- Начиная сообщение с "Sheriff", "Шериф" или "Шерифф"
 - Или упомянув меня через @username (@` + b.tgBot.Self.UserName + `)`
 }
 
@@ -150,18 +160,27 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 }
 
 // Вспомогательная функция для получения названия чата
-func getChatTitle(chat *tgbotapi.Chat) string {
-	if chat == nil {
+func getChatTitle(message *tgbotapi.Message) string {
+	if message.Chat == nil {
 		return "Unknown"
 	}
-	if chat.Title != "" {
-		return chat.Title
+
+	switch message.Chat.Type {
+	case "group", "supergroup":
+		if message.Chat.Title != "" {
+			return message.Chat.Title
+		}
+		return "Group Chat"
+	case "private":
+		return getUserName(message.From)
+	case "channel":
+		if message.Chat.Title != "" {
+			return message.Chat.Title
+		}
+		return "Channel"
+	default:
+		return "Unknown"
 	}
-	return getUserName(&tgbotapi.User{
-		FirstName: chat.FirstName,
-		LastName:  chat.LastName,
-		UserName:  chat.UserName,
-	})
 }
 
 // =======  tg Вспомогательная функция для получения имени пользователя
@@ -173,6 +192,21 @@ func getUserName(user *tgbotapi.User) string {
 		return "@" + user.UserName
 	}
 	return strings.TrimSpace(fmt.Sprintf("%s %s", user.FirstName, user.LastName))
+}
+
+// getUserByID получает пользователя по ID из БД
+func (b *Bot) getUserByID(userID int64) (*tgbotapi.User, error) {
+	var user tgbotapi.User
+	err := b.db.QueryRow(`
+        SELECT id, username, first_name, last_name
+        FROM users
+        WHERE id = ?`, userID).Scan(
+		&user.ID, &user.UserName, &user.FirstName, &user.LastName)
+
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
 }
 
 // Вспомогательная функция для определения типа сообщения
