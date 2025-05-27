@@ -439,10 +439,7 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 
 // handleBotMention обрабатывает сообщения, адресованные боту
 func (b *Bot) handleBotMention(message *tgbotapi.Message) {
-	if message.From == nil {
-		log.Println("Сообщение без отправителя")
-		return
-	}
+
 	// Удаляем ключевое слово или упоминание из текста
 	cleanText := b.removeBotMention(message.Text)
 	// Обрабатываем очищенный текст сообщения
