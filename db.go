@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"strings"
@@ -31,6 +32,7 @@ func (b *Bot) initDB() error {
                     username TEXT,
                     first_name TEXT,
                     last_name TEXT,
+                    ai_user_info TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             `,
@@ -589,4 +591,28 @@ func (b *Bot) DeleteOldMessages() error {
 
 		log.Printf("Удалены сообщения старше %d дней", b.config.HistoryDays)
 	}
+}
+
+// GetUserAIInfo получает информацию о настройках AI пользователя
+func (b *Bot) GetUserAIInfo(userID int64) (string, error) {
+	var aiInfo string
+	err := b.db.QueryRow(`
+        SELECT ai_user_info FROM users WHERE id = ?`, userID).Scan(&aiInfo)
+	if err != nil {
+		return "", fmt.Errorf("ошибка получения информации о пользователе: %v", err)
+	}
+	return aiInfo, nil
+}
+
+// IsUserAdminInDB проверяет, является ли пользователь администратором в БД
+func (b *Bot) IsUserAdminInDB(chatID, userID int64) (bool, error) {
+	var role string
+	row := b.db.QueryRow("SELECT role FROM users_role WHERE chat_id = $1 AND user_id = $2", chatID, userID)
+	if err := row.Scan(&role); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, fmt.Errorf("error checking user role in DB: %v", err)
+	}
+	return role == "admin", nil
 }

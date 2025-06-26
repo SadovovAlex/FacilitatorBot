@@ -2,11 +2,12 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // CommandHandler обрабатывает команды бота
@@ -33,13 +34,17 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 	case "stat", "stats":
 		b.handleStats(message)
 	case "aistat", "aistats":
-		b.handleAIStats(message)
+		b.handleAdminCommand(message)
+		return
 	case "anekdot", "анекдот":
 		b.handleAnekdot(message)
 	case "tema", "topic":
 		b.handleTopic(message)
 	case "clear", "забудь":
 		b.handleClear(message)
+	case "say", "сказать":
+		b.handleAdminCommand(message)
+		return
 	default:
 		b.handleUnknownCommand(message)
 	}
@@ -66,9 +71,9 @@ func (b *Bot) handlePing(message *tgbotapi.Message) {
 
 	response := fmt.Sprintf(
 		"🏓 Pong!\n"+
-		"⏱ Время обработки: %d ms\n"+
-		"🕒 Время сервера: %s\n"+
-		"⏳ Задержка сообщения: %s",
+			"⏱ Время обработки: %d ms\n"+
+			"🕒 Время сервера: %s\n"+
+			"⏳ Задержка сообщения: %s",
 		processingTime.Milliseconds(),
 		time.Now().Format("02.01.2006 15:04:05 MST"),
 		formatDuration(timeDiff),
@@ -100,13 +105,6 @@ func (b *Bot) handleStats(message *tgbotapi.Message) {
 	b.handleStatsRequest(message)
 }
 
-// handleAIStats обрабатывает команду /aistats (только для администраторов)
-func (b *Bot) handleAIStats(message *tgbotapi.Message) {
-	if allowedAdmins[message.From.ID] {
-		b.handleGetTopAIUsers(message)
-	}
-}
-
 // handleAnekdot обрабатывает команду /anekdot
 func (b *Bot) handleAnekdot(message *tgbotapi.Message) {
 	b.handleAnekdotRequest(message)
@@ -124,5 +122,20 @@ func (b *Bot) handleClear(message *tgbotapi.Message) {
 
 // handleUnknownCommand обрабатывает неизвестные команды
 func (b *Bot) handleUnknownCommand(message *tgbotapi.Message) {
-	b.sendMessage(message.Chat.ID, "Неизвестная команда. Используйте /help для списка команд.")
+	// Список случайных ответов
+	responses := []string{
+		"Такое не знаю.",
+		"Извините, но эта команда мне не знакома.",
+		"Не могу понять, что вы от меня хотите.",
+		"Хм, не могу найти такую команду в своем меню.",
+		"К сожалению, эта функция находится в разработке.",
+	}
+
+	// Инициализируем рандомайзер с текущим временем
+	rand.Seed(time.Now().UnixNano())
+
+	// Выбираем случайный ответ
+	response := responses[rand.Intn(len(responses))]
+
+	b.sendMessage(message.Chat.ID, response)
 }

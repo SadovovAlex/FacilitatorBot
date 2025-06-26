@@ -590,7 +590,8 @@ func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
 		return
 	}
 
-	messages, err := b.getRecentMessages(-1002478281670, -1) //Выборка из БД только Атипичный Чат
+	//messages, err := b.getRecentMessages(-1002478281670, -1) //Выборка из БД только Атипичный Чат
+	messages, err := b.getRecentMessages(chatID, -1)
 	if err != nil {
 		fmt.Printf("ошибка получения сообщений: %v", err)
 		return
@@ -893,8 +894,15 @@ func (b *Bot) isChatAllowed(chatID int64) bool {
 func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
 	log.Printf("Пользователь %d обратился: %s", message.From.ID, message.Text)
 
+	// Получаем системный промпт пользователя
+	aiInfo, err := b.GetUserAIInfo(message.From.ID)
+	if err != nil {
+		log.Printf("Ошибка получения AI info: %v", err)
+		aiInfo = "" // Используем пустой промпт по умолчанию
+	}
+
 	// Сохраняем контекст пользователя
-	err := b.saveContext(
+	err = b.saveContext(
 		message.Chat.ID,
 		message.From.ID,
 		"user",
@@ -914,6 +922,16 @@ func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
 	)
 	if err != nil {
 		log.Printf("Ошибка получения контекста: %v", err)
+	}
+
+	// Обрабатываем сообщение с учетом системного промпта пользователя
+	if aiInfo != "" {
+		// Добавляем системный промпт в начало контекста
+		context = append([]ContextMessage{{
+			Role:      "system",
+			Content:   aiInfo,
+			Timestamp: message.Time().Unix(),
+		}}, context...)
 	}
 
 	// Формируем промпт с учетом контекста
