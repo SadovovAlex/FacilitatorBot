@@ -1017,8 +1017,8 @@ func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
 
 	// Создание сводки с помощью локальной LLM
 	summary, err := b.generateAiRequest(
-		//b.config.ReplyPrompt,
-		b.config.SystemPrompt,
+		b.config.ReplyPrompt,
+		//b.config.SystemPrompt,
 		//fmt.Sprintf(b.config.ReplyPrompt, prompt),
 		prompt,
 		message,
