@@ -7,3 +7,13 @@ feat: implement database integration for chat messages and user data
 - Implement AI billing tracking
 - Add context management for chat conversations
 - Add message cleanup functionality
+
+feat: add version and build date tracking
+
+- Add version.go with version constant
+- Add build scripts for Windows and Linux
+- Update startup logging to show version and build date
+- Add version info to startup notification message
+- Improve build process with automatic date stamping
+
+The bot now shows its version and build date both in logs and startup notifications.

@@ -146,11 +146,25 @@ var allowedAdmins = map[int64]bool{
 	233088195: true,
 }
 
-// Разрешенные чаты (группы, супергруппы)
-var allowedChats = map[int64]bool{
-	-1002478281670: true, // Атипичный чат
-	-1002631108476: true, //AdminBot
-	-1002407860030: true, //AdminBot2
+// parseAllowedGroups парсит ALLOWED_GROUPS из .env в slice int64
+func parseAllowedGroups(envValue string) []int64 {
+	if envValue == "" {
+		return []int64{-1002478281670, -1002631108476, -1002407860030} // default values АтипичныйЧат, Админ, Админ2
+	}
+
+	groups := strings.Split(envValue, ",")
+	result := make([]int64, len(groups))
+
+	for i, group := range groups {
+		id, err := strconv.ParseInt(strings.TrimSpace(group), 10, 64)
+		if err != nil {
+			log.Printf("Ошибка парсинга ID группы %q: %v", group, err)
+			continue
+		}
+		result[i] = id
+	}
+
+	return result
 }
 
 func main() {
@@ -163,12 +177,18 @@ func main() {
 		log.Printf("Ошибка загрузки .env файла: %v (продолжаем с переменными окружения)", err)
 	}
 
+	// Логируем информацию о версии
+	log.Printf("Init %s", Version)
+	if BuildDate != "" {
+		log.Printf("Дата сборки: %s", BuildDate)
+	}
+
 	// Загрузка конфигурации
 	config := Config{
 		TelegramToken:        getEnv("TELEGRAM_BOT_TOKEN", ""),
 		LocalLLMUrl:          getEnv("AI_LOCAL_LLM_URL", "http://localhost:1234/v1/chat/completions"),
 		AiModelName:          getEnv("AI_MODEL", ""),
-		AllowedGroups:        []int64{},
+		AllowedGroups:        parseAllowedGroups(getEnv("ALLOWED_GROUPS", "")),
 		HistoryDays:          30, //DB save msg days
 		ContextMessageLimit:  10,
 		ContextTimeLimit:     4,
@@ -267,9 +287,15 @@ func NewBot(config Config) (*Bot, error) {
 
 // Run запускает бота
 func (b *Bot) Run() {
-	log.Printf("Бот запущен как %s", b.tgBot.Self.UserName)
-	// Отправляем уведомление о запуске пользователю
-	msg := tgbotapi.NewMessage(152657363, "🤖 Бот "+b.tgBot.Self.UserName+" успешно запущен!")
+	// Логируем информацию о версии
+	log.Printf("Бот запущен как %s, %s, %s", b.tgBot.Self.UserName, Version, BuildDate)
+
+	// Отправляем уведомление о запуске пользователю с информацией о версии
+	versionInfo := Version
+	if BuildDate != "" {
+		versionInfo += ", сборка: " + BuildDate
+	}
+	msg := tgbotapi.NewMessage(152657363, "🤖 Бот "+b.tgBot.Self.UserName+" запущен! Версия: "+versionInfo)
 	_, err := b.tgBot.Send(msg)
 	if err != nil {
 		log.Printf("Ошибка отправки сообщения о запуске:%v", err)
@@ -351,117 +377,6 @@ func (b *Bot) processMessage(message *tgbotapi.Message) {
 		b.storeMessage(message)
 	}
 
-}
-
-// handleCommand обрабатывает команды бота
-func (b *Bot) handleCommand(message *tgbotapi.Message) {
-
-	if !allowedChats[message.Chat.ID] {
-		b.sendMessage(message.Chat.ID, "Извините, я не работаю в этом чате.")
-		return
-	}
-
-	// Проверяем, есть ли пользователь в списке разрешенных
-	// if message.From != nil && !allowedUsers[message.From.ID] {
-	// 	b.sendMessage(message.Chat.ID, "Не хочу выполнять вашу команду.")
-	// 	return
-	// }
-
-	// Проверяем, может ли бот видеть сообщения в этом чате
-	if message.Chat.IsGroup() || message.Chat.IsSuperGroup() {
-		if !b.canBotReadMessages(message.Chat.ID) {
-			b.sendMessage(message.Chat.ID, "Мне нужны права администратора или участника в этой группе чтобы видеть сообщения.")
-			return
-		}
-	}
-
-	switch message.Command() {
-	case "start":
-		b.sendMessage(message.Chat.ID, "Привет! Я бот для создания кратких пересказов обсуждений. Используй /summary для получения сводки.")
-	case "help":
-		b.sendMessage(message.Chat.ID, b.getHelp())
-
-	case "ping", "пинг":
-		// Фиксируем время получения команды
-		commandReceiveTime := time.Now()
-
-		// Отправляем первый ответ
-		b.sendMessage(message.Chat.ID, "pong")
-
-		// Вычисляем время обработки
-		processingTime := time.Since(commandReceiveTime)
-
-		// Получаем время сообщения с учетом локального времени сервера
-		messageTime := time.Unix(int64(message.Date), 0)
-		timeDiff := time.Since(messageTime)
-
-		// Формируем детализированный ответ
-		response := fmt.Sprintf(
-			"🏓 Pong!\n"+
-				"⏱ Время обработки: %d ms\n"+
-				"🕒 Время сервера: %s\n"+
-				"⏳ Задержка сообщения: %s",
-			processingTime.Milliseconds(),
-			time.Now().Format("02.01.2006 15:04:05 MST"),
-			formatDuration(timeDiff),
-		)
-
-		// Отправляем расширенную информацию
-		b.sendMessage(message.Chat.ID, response)
-
-	case "summary", "саммари":
-		// Обработка параметра количества сообщений (по умолчанию 50)
-		args := strings.Fields(message.CommandArguments())
-		count := LIMIT_MSG // значение по умолчанию
-		if len(args) > 0 {
-			if num, err := strconv.Atoi(args[0]); err == nil && num > 0 {
-				count = num
-				// Ограничим максимальное количество сообщений для безопасности
-				if count > LIMIT_MSG {
-					count = LIMIT_MSG
-					b.sendMessage(message.Chat.ID, fmt.Sprintf("Я помню только %d сообщений...", LIMIT_MSG))
-				}
-			}
-		}
-		b.handleSummaryRequest(message, count)
-	// case "summary_from":
-	// 	b.handleSummaryFromRequest(message)
-	case "stat", "stats":
-		b.handleStatsRequest(message)
-	case "aistat", "aistats":
-		if allowedAdmins[message.From.ID] {
-			b.handleGetTopAIUsers(message)
-		}
-	case "anekdot", "анекдот":
-		b.handleAnekdotRequest(message)
-	case "tema", "topic":
-		b.handleTopicRequest(message)
-	case "clear", "забудь":
-		b.DeleteUserContext(message.Chat.ID, message.From.ID)
-	case "say", "сказать":
-		// Команда для отправки сообщения от имени бота
-		if allowedAdmins[message.From.ID] {
-			text := message.CommandArguments()
-			if text == "" {
-				b.sendMessage(message.Chat.ID, "Использование: /say [текст]")
-				return
-			}
-
-			// Отправляем сообщение
-			b.sendMessage(message.Chat.ID, text)
-
-			// Удаляем команду администратора
-			deleteMsg := tgbotapi.NewDeleteMessage(message.Chat.ID, message.MessageID)
-			_, err := b.tgBot.Request(deleteMsg)
-			if err != nil {
-				log.Printf("Не удалось удалить сообщение: %v", err)
-			}
-		} else {
-			b.sendMessage(message.Chat.ID, "У вас нет прав.")
-		}
-	default:
-		b.sendMessage(message.Chat.ID, "Неизвестная команда. Используйте /help для списка команд.")
-	}
 }
 
 // handleBotMention обрабатывает сообщения, адресованные боту
