@@ -1,0 +1,9 @@
+26.06.2025
+feat: implement database integration for chat messages and user data
+
+- Add database initialization with migrations
+- Implement chat message storage and retrieval
+- Add user data management
+- Implement AI billing tracking
+- Add context management for chat conversations
+- Add message cleanup functionality
