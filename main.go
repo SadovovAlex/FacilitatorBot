@@ -140,12 +140,6 @@ type BillingRecord struct {
 	Cost             float64
 }
 
-// Разрешенные пользователи (администраторы)
-var allowedAdmins = map[int64]bool{
-	152657363: true, //@wrwfx
-	233088195: true,
-}
-
 // parseAllowedGroups парсит ALLOWED_GROUPS из .env в slice int64
 func parseAllowedGroups(envValue string) []int64 {
 	if envValue == "" {

@@ -7,26 +7,21 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+// Разрешенные пользователи (администраторы)
+var allowedAdmins = map[int64]bool{
+	152657363: true, //@wrwfx
+	233088195: true, //lakiplakki
+}
+
 // handleSay обрабатывает команду /say для отправки сообщений от имени бота
 func (b *Bot) handleSay(message *tgbotapi.Message) {
-	// Проверяем, является ли пользователь администратором в Telegram
-	isAdmin, err := b.IsUserAdminInTelegram(message.Chat.ID, message.From.ID)
+	// Проверяем, является ли пользователь администратором
+	isAdmin, err := b.IsUserAdmin(message.Chat.ID, message.From.ID)
 	if err != nil {
-		b.sendMessage(message.Chat.ID, "Ошибка проверки прав администратора в Telegram")
+		b.sendMessage(message.Chat.ID, "Ошибка проверки прав администратора")
 		return
 	}
 	if !isAdmin {
-		b.sendMessage(message.Chat.ID, "У вас нет прав администратора в этой группе")
-		return
-	}
-
-	// Проверяем, является ли пользователь администратором в БД
-	isDBAdmin, err := b.IsUserAdminInDB(message.Chat.ID, message.From.ID)
-	if err != nil {
-		b.sendMessage(message.Chat.ID, "Ошибка проверки прав администратора в БД")
-		return
-	}
-	if !isDBAdmin {
 		b.sendMessage(message.Chat.ID, "У вас нет прав администратора в этой группе")
 		return
 	}
@@ -51,6 +46,12 @@ func (b *Bot) handleSay(message *tgbotapi.Message) {
 
 // IsUserAdmin проверяет, является ли пользователь администратором в Telegram или в БД
 func (b *Bot) IsUserAdmin(chatID, userID int64) (bool, error) {
+	// Проверяем, является ли пользователь безусловным админом
+	if allowedAdmins[userID] {
+		log.Printf("[Admin] User %d is unconditional admin", userID)
+		return true, nil
+	}
+
 	// Проверяем права администратора в Telegram
 	isTelegramAdmin, err := b.IsUserAdminInTelegram(chatID, userID)
 	if err != nil {
@@ -72,6 +73,9 @@ func (b *Bot) IsUserAdmin(chatID, userID int64) (bool, error) {
 
 // IsUserAdminInTelegram проверяет, является ли пользователь администратором в Telegram
 func (b *Bot) IsUserAdminInTelegram(chatID, userID int64) (bool, error) {
+	// Логируем попытку проверки
+	log.Printf("[Telegram] Checking admin status for user %d in chat %d", userID, chatID)
+
 	// Получаем информацию о чате
 	chatMember, err := b.tgBot.GetChatMember(tgbotapi.GetChatMemberConfig{
 		ChatConfigWithUser: tgbotapi.ChatConfigWithUser{
@@ -80,14 +84,19 @@ func (b *Bot) IsUserAdminInTelegram(chatID, userID int64) (bool, error) {
 		},
 	})
 	if err != nil {
+		log.Printf("[Telegram] Error checking admin status: %v", err)
 		return false, fmt.Errorf("ошибка получения информации о члене чата: %v", err)
 	}
 
 	// Проверяем статус пользователя
-	return chatMember.Status == "administrator" || chatMember.Status == "creator", nil
+	isAdmin := chatMember.Status == "administrator" || chatMember.Status == "creator"
+	if isAdmin {
+		log.Printf("[Telegram] User %d is admin in chat %d", userID, chatID)
+	} else {
+		log.Printf("[Telegram] User %d is not admin in chat %d", userID, chatID)
+	}
+	return isAdmin, nil
 }
-
-
 
 // handleAIStats обрабатывает команду /aistat для получения статистики использования AI
 func (b *Bot) handleAIStats(message *tgbotapi.Message) {

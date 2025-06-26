@@ -1,4 +1,11 @@
 26.06.2025
+refactor: combine admin checks and add build number tracking
+
+- Add IsUserAdmin function to check admin status in both Telegram and DB
+- Remove duplicate IsUserAdminInDB function from admin.go
+- Add build number tracking in version.go
+- Update handleAIStats to use new IsUserAdmin function
+
 feat: implement database integration for chat messages and user data
 
 - Add database initialization with migrations

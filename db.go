@@ -109,13 +109,13 @@ func (b *Bot) initDB() error {
                 CREATE TABLE IF NOT EXISTS users_role (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id INTEGER NOT NULL,
-                    channel_id INTEGER NOT NULL,
+                    chat_id INTEGER NOT NULL,
                     role TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (user_id) REFERENCES users(id),
-                    FOREIGN KEY (channel_id) REFERENCES chats(id),
-                    UNIQUE(user_id, channel_id)
+                    FOREIGN KEY (chat_id) REFERENCES chats(id),
+                    UNIQUE(user_id, chat_id)
                 );
             `,
 		},
@@ -178,7 +178,7 @@ func (b *Bot) initDB() error {
 			name: "create_users_role_indexes",
 			sql: `
                 CREATE INDEX IF NOT EXISTS idx_users_role_user ON users_role(user_id);
-                CREATE INDEX IF NOT EXISTS idx_users_role_channel ON users_role(channel_id);
+                CREATE INDEX IF NOT EXISTS idx_users_role_chat ON users_role(chat_id);
             `,
 		},
 	}
@@ -607,12 +607,24 @@ func (b *Bot) GetUserAIInfo(userID int64) (string, error) {
 // IsUserAdminInDB проверяет, является ли пользователь администратором в БД
 func (b *Bot) IsUserAdminInDB(chatID, userID int64) (bool, error) {
 	var role string
-	row := b.db.QueryRow("SELECT role FROM users_role WHERE chat_id = $1 AND user_id = $2", chatID, userID)
+	query := "SELECT role FROM users_role WHERE chat_id = $1 AND user_id = $2"
+
+	// Логируем запрос
+	log.Printf("[DB] Checking admin role for user %d in chat %d", userID, chatID)
+	log.Printf("[DB] Query: %s", query)
+
+	row := b.db.QueryRow(query, chatID, userID)
 	if err := row.Scan(&role); err != nil {
 		if err == sql.ErrNoRows {
+			log.Printf("[DB] User %d is not admin in chat %d", userID, chatID)
 			return false, nil
 		}
+		log.Printf("[DB] Error checking user role: %v", err)
 		return false, fmt.Errorf("error checking user role in DB: %v", err)
 	}
+
+	// Логируем результат
+	log.Printf("[DB] User %d role in chat %d: %s", userID, chatID, role)
+
 	return role == "admin", nil
 }
