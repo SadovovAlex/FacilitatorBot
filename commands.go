@@ -63,8 +63,6 @@ func (b *Bot) handleHelp(message *tgbotapi.Message) {
 // handlePing обрабатывает команду /ping
 func (b *Bot) handlePing(message *tgbotapi.Message) {
 	commandReceiveTime := time.Now()
-	b.sendMessage(message.Chat.ID, "pong")
-
 	processingTime := time.Since(commandReceiveTime)
 	messageTime := time.Unix(int64(message.Date), 0)
 	timeDiff := time.Since(messageTime)
@@ -98,21 +96,6 @@ func (b *Bot) handleSummary(message *tgbotapi.Message) {
 	}
 
 	b.handleSummaryRequest(message, count)
-}
-
-// handleStats обрабатывает команду /stats
-func (b *Bot) handleStats(message *tgbotapi.Message) {
-	b.handleStatsRequest(message)
-}
-
-// handleAnekdot обрабатывает команду /anekdot
-func (b *Bot) handleAnekdot(message *tgbotapi.Message) {
-	b.handleAnekdotRequest(message)
-}
-
-// handleTopic обрабатывает команду /tema
-func (b *Bot) handleTopic(message *tgbotapi.Message) {
-	b.handleTopicRequest(message)
 }
 
 // handleClear обрабатывает команду /clear

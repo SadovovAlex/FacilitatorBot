@@ -389,9 +389,6 @@ func (b *Bot) handleBotMention(message *tgbotapi.Message) {
 			return
 		}
 		b.sendMessage(message.Chat.ID, fmt.Sprintf("Все забыл =) %s", getUserName(message.From)))
-	case strings.Contains(strings.ToLower(cleanText), "ping"),
-		strings.Contains(strings.ToLower(cleanText), "пинг"):
-		b.sendMessage(message.Chat.ID, "pong")
 	case strings.Contains(strings.ToLower(cleanText), "сводка"),
 		strings.Contains(strings.ToLower(cleanText), "саммари"):
 		// Обработка параметра количества сообщений (по умолчанию LIMIT_MSG)
@@ -475,39 +472,6 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message, count int) {
 	b.lastSummary[chatID] = time.Now()
 }
 
-// handleSummaryFromRequest обрабатывает запрос на сводку из другого чата
-// func (b *Bot) handleSummaryFromRequest(message *tgbotapi.Message) {
-// 	if message.ReplyToMessage == nil || message.ReplyToMessage.ForwardFromChat == nil {
-// 		b.sendMessage(message.Chat.ID, "Пожалуйста, ответьте на это сообщение, переслав сообщение из чата, для которого нужно сделать сводку.")
-// 		return
-// 	}
-
-// 	sourceChatID := message.ReplyToMessage.ForwardFromChat.ID
-// 	history := b.chatHistories[sourceChatID]
-
-// 	if len(history) == 0 {
-// 		b.sendMessage(message.Chat.ID, fmt.Sprintf("Нет данных для чата %s.", message.ReplyToMessage.ForwardFromChat.Title))
-// 		return
-// 	}
-
-// 	// Форматируем историю сообщений
-// 	var messagesText strings.Builder
-// 	for _, msg := range history {
-// 		fmt.Fprintf(&messagesText, "[%s] %s: %s\n",
-// 			msg.Time.Format("15:04"), msg.User, msg.Text)
-// 	}
-
-// 	summary, err := b.generateSummary(messagesText.String())
-// 	if err != nil {
-// 		log.Printf("Ошибка генерации сводки: %v", err)
-// 		b.sendMessage(message.Chat.ID, "Произошла ошибка при создании сводки.")
-// 		return
-// 	}
-
-// 	b.sendMessage(message.Chat.ID, fmt.Sprintf("📝 Краткая сводка из %s:\n\n%s",
-// 		message.ReplyToMessage.ForwardFromChat.Title, summary))
-// }
-
 // handleGetTopAIUsers возвращает топ пользователей по использованию токенов в читаемом формате
 func (b *Bot) handleGetTopAIUsers(message *tgbotapi.Message) {
 	// Проверяем права пользователя (только админы могут запрашивать статистику)
@@ -572,103 +536,6 @@ func (b *Bot) handleGetTopAIUsers(message *tgbotapi.Message) {
 	if _, err := b.tgBot.Send(msg); err != nil {
 		log.Printf("Ошибка отправки сообщения: %v", err)
 	}
-}
-
-// handleSummaryRequest обрабатывает запрос на сводку текущего чата
-func (b *Bot) handleAnekdotRequest(message *tgbotapi.Message) {
-	chatID := message.Chat.ID
-
-	// Проверка разрешен ли чат
-	if !b.isChatAllowed(chatID) {
-		b.sendMessage(chatID, "Извините, у меня нет доступа к истории этого чата.")
-		return
-	}
-
-	//messages, err := b.getRecentMessages(-1002478281670, -1) //Выборка из БД только Атипичный Чат
-	messages, err := b.getRecentMessages(chatID, -1)
-	if err != nil {
-		fmt.Printf("ошибка получения сообщений: %v", err)
-		return
-	}
-
-	if len(messages) == 0 {
-		fmt.Printf("Нет сообщений за последние 6 часов")
-		return
-	}
-
-	// Форматируем историю сообщений
-	var messagesText strings.Builder
-	for _, msg := range messages {
-		//msgTime := time.Unix(msg.Timestamp, 0)
-		fmt.Fprintf(&messagesText, "%s: %s\n",
-			//msgTime.Format("15:04"),
-			msg.UserFirstName,
-			msg.Text)
-	}
-
-	// Создание сводки с помощью локальной LLM
-	//summary, err := b.generateAnekdot(messagesText.String(), chatID)
-	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.AnekdotPrompt, messagesText.String()), message)
-
-	if err != nil {
-		log.Printf("Ошибка генерации анекдота: %v", err)
-		b.sendMessage(chatID, "Не смог придумать анекдот, попробуй позже.")
-		return
-	}
-
-	fmt.Printf("Resp AI: %v", summary)
-
-	b.sendMessage(chatID, "📝 Аnekdot:\n\n"+summary)
-	b.lastSummary[chatID] = time.Now()
-}
-
-// handleSummaryRequest обрабатывает запрос на сводку текущего чата
-func (b *Bot) handleTopicRequest(message *tgbotapi.Message) {
-	chatID := message.Chat.ID
-
-	// Проверка разрешен ли чат
-	if !b.isChatAllowed(chatID) {
-		b.sendMessage(chatID, "Извините, у меня нет доступа к истории этого чата.")
-		return
-	}
-
-	messages, err := b.getRecentMessages(-1002478281670, -1) //Выборка из БД только Атипичный Чат
-	if err != nil {
-		fmt.Printf("ошибка получения сообщений: %v", err)
-		return
-	}
-
-	if len(messages) == 0 {
-		fmt.Printf("Нет сообщений за последние 6 часов")
-		return
-	}
-
-	// Форматируем историю сообщений
-	var messagesText strings.Builder
-	for _, msg := range messages {
-		//msgTime := time.Unix(msg.Timestamp, 0)
-		fmt.Fprintf(&messagesText, "%s: %s\n",
-			//msgTime.Format("15:04"),
-			msg.Username,
-			msg.Text)
-	}
-
-	fmt.Println(messagesText.String())
-
-	// Создание сводки с помощью локальной LLM
-	//summary, err := b.generateTopic(messagesText.String(), chatID)
-	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.TopicPrompt, messagesText.String()), message)
-
-	if err != nil {
-		log.Printf("Ошибка генерации темы обсуждений: %v", err)
-		b.sendMessage(chatID, "Не смог придумать тему, сорян.")
-		return
-	}
-
-	fmt.Printf("Resp AI: %v", summary)
-
-	b.sendMessage(chatID, "Обсудим?\n\n"+summary)
-	b.lastSummary[chatID] = time.Now()
 }
 
 // handleStatsRequest показывает статистику по сообщениям и благодарностям из БД
@@ -977,4 +844,155 @@ type ContextMessage struct {
 	Role      string // "user" или "assistant"
 	Content   string
 	Timestamp int64
+}
+
+// handleStats обрабатывает команду /stats
+func (b *Bot) handleStats(message *tgbotapi.Message) {
+	chatID := message.Chat.ID
+
+	// Формируем сообщение со статистикой
+	var statsMsg strings.Builder
+	fmt.Fprintf(&statsMsg, "📊 Статистика чата:\n\n")
+
+	// 1. Общая статистика по сообщениям
+	var totalMessages int
+	err := b.db.QueryRow("SELECT COUNT(*) FROM messages WHERE chat_id = ?", chatID).Scan(&totalMessages)
+	if err == nil {
+		fmt.Fprintf(&statsMsg, "📨 Всего сообщений: %d\n", totalMessages)
+	}
+
+	// 2. Статистика по благодарностям
+	var totalThanks int
+	err = b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE chat_id = ?", chatID).Scan(&totalThanks)
+	if err == nil {
+		fmt.Fprintf(&statsMsg, "🙏 Всего благодарностей: %d\n\n", totalThanks)
+	}
+
+	// 3. Топ получателей благодарностей
+	fmt.Fprintf(&statsMsg, "🏆 Топ-5 самых благодарных пользователей:\n")
+	rows, err := b.db.Query(`
+			SELECT u.username, COUNT(*) as thanks_count
+			FROM thanks t
+			JOIN users u ON t.from_user_id = u.id
+			WHERE t.chat_id = ?
+			GROUP BY u.id
+			ORDER BY thanks_count DESC
+			LIMIT 5`, chatID)
+	if err == nil {
+		defer rows.Close()
+		for i := 1; rows.Next(); i++ {
+			var username string
+			var count int
+			if err := rows.Scan(&username, &count); err == nil {
+				fmt.Fprintf(&statsMsg, "%d. %s (%d благодарностей)\n", i, username, count)
+			}
+		}
+	}
+
+	// 4. Топ получателей благодарностей
+	fmt.Fprintf(&statsMsg, "\n🏆 Топ-5 самых благодаримых пользователей:\n")
+	rows, err = b.db.Query(`
+			SELECT u.username, COUNT(*) as thanks_count
+			FROM thanks t
+			JOIN users u ON t.to_user_id = u.id
+			WHERE t.chat_id = ?
+			GROUP BY u.id
+			ORDER BY thanks_count DESC
+			LIMIT 5`, chatID)
+	if err == nil {
+		defer rows.Close()
+		for i := 1; rows.Next(); i++ {
+			var username string
+			var count int
+			if err := rows.Scan(&username, &count); err == nil {
+				fmt.Fprintf(&statsMsg, "%d. %s (%d благодарностей)\n", i, username, count)
+			}
+		}
+	}
+
+	b.sendMessage(chatID, statsMsg.String())
+}
+
+// handleTopic обрабатывает команду /tema
+func (b *Bot) handleTopic(message *tgbotapi.Message) {
+	chatID := message.Chat.ID
+
+	// Проверка разрешен ли чат
+	if !b.isChatAllowed(chatID) {
+		b.sendMessage(chatID, "Извините, у меня нет доступа к истории этого чата.")
+		return
+	}
+
+	messages, err := b.getRecentMessages(chatID, -1)
+	if err != nil {
+		log.Printf("Ошибка получения сообщений: %v", err)
+		b.sendMessage(chatID, "Не удалось получить историю сообщений.")
+		return
+	}
+
+	if len(messages) == 0 {
+		b.sendMessage(chatID, "Нет сообщений для анализа.")
+		return
+	}
+
+	// Форматируем историю сообщений
+	var messagesText strings.Builder
+	for _, msg := range messages {
+		fmt.Fprintf(&messagesText, "%s: %s\n",
+			msg.Username,
+			msg.Text)
+	}
+
+	// Создание темы с помощью локальной LLM
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.TopicPrompt, messagesText.String()), message)
+	if err != nil {
+		log.Printf("Ошибка генерации темы: %v", err)
+		b.sendMessage(chatID, "Не удалось сгенерировать тему.")
+		return
+	}
+
+	b.sendMessage(chatID, "Обсудим?\n\n"+summary)
+	b.lastSummary[chatID] = time.Now()
+}
+
+// handleAnekdot обрабатывает команду /anekdot
+func (b *Bot) handleAnekdot(message *tgbotapi.Message) {
+	chatID := message.Chat.ID
+
+	// Проверка разрешен ли чат
+	if !b.isChatAllowed(chatID) {
+		b.sendMessage(chatID, "Извините, у меня нет доступа к истории этого чата.")
+		return
+	}
+
+	messages, err := b.getRecentMessages(chatID, -1)
+	if err != nil {
+		log.Printf("Ошибка получения сообщений: %v", err)
+		b.sendMessage(chatID, "Не удалось получить историю сообщений.")
+		return
+	}
+
+	if len(messages) == 0 {
+		b.sendMessage(chatID, "Нет сообщений для анализа.")
+		return
+	}
+
+	// Форматируем историю сообщений
+	var messagesText strings.Builder
+	for _, msg := range messages {
+		fmt.Fprintf(&messagesText, "%s: %s\n",
+			msg.Username,
+			msg.Text)
+	}
+
+	// Создание анекдота с помощью локальной LLM
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.AnekdotPrompt, messagesText.String()), message)
+	if err != nil {
+		log.Printf("Ошибка генерации анекдота: %v", err)
+		b.sendMessage(chatID, "Не смог придумать анекдот, попробуй позже.")
+		return
+	}
+
+	b.sendMessage(chatID, "📝 Аnekdot:\n\n"+summary)
+	b.lastSummary[chatID] = time.Now()
 }
