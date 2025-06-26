@@ -3,126 +3,362 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 // pingDB проверяет соединение с базой данных
-func (b *Bot) pingDB() error {
-	return b.db.Ping()
-}
+// func (b *Bot) pingDB() error {
+// 	return b.db.Ping()
+// }
 
 // initDB инициализирует базу данных
+// func (b *Bot) initDB() error {
+// 	// Создаем таблицу чатов
+// 	_, err := b.db.Exec(`
+// 		CREATE TABLE IF NOT EXISTS chats (
+// 			id INTEGER PRIMARY KEY,
+// 			title TEXT,
+// 			type TEXT,
+// 			username TEXT,
+// 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+// 		)`)
+// 	if err != nil {
+// 		return fmt.Errorf("ошибка создания таблицы чатов: %v", err)
+// 	}
+
+// 	// Создаем таблицу пользователей
+// 	_, err = b.db.Exec(`
+// 		CREATE TABLE IF NOT EXISTS users (
+// 			id INTEGER PRIMARY KEY,
+// 			username TEXT,
+// 			first_name TEXT,
+// 			last_name TEXT,
+// 			ai_user_info TEXT,
+// 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+// 		)`)
+// 	if err != nil {
+// 		return fmt.Errorf("ошибка создания таблицы пользователей: %v", err)
+// 	}
+
+// 	// Создаем таблицу ролей пользователей в каналах
+// 	_, err = b.db.Exec(`
+// 		CREATE TABLE IF NOT EXISTS users_role (
+// 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+// 			user_id INTEGER NOT NULL,
+// 			channel_id INTEGER NOT NULL,
+// 			role TEXT NOT NULL,  -- 'admin', 'moderator', 'member' и т.д.
+// 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+// 			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+// 			FOREIGN KEY (user_id) REFERENCES users(id),
+// 			FOREIGN KEY (channel_id) REFERENCES chats(id),
+// 			UNIQUE(user_id, channel_id)
+// 		)`)
+// 	if err != nil {
+// 		return fmt.Errorf("ошибка создания таблицы ролей пользователей: %v", err)
+// 	}
+
+// 	// Создаем таблицу сообщений
+// 	_, err = b.db.Exec(`
+// 		CREATE TABLE IF NOT EXISTS messages (
+// 			id INTEGER PRIMARY KEY,
+// 			chat_id INTEGER,
+// 			user_id INTEGER,
+// 			text TEXT,
+// 			timestamp INTEGER,
+// 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+// 			FOREIGN KEY(chat_id) REFERENCES chats(id),
+// 			FOREIGN KEY(user_id) REFERENCES users(id)
+// 		)`)
+// 	if err != nil {
+// 		return fmt.Errorf("ошибка создания таблицы сообщений: %v", err)
+// 	}
+
+// 	// Создаем таблицу спасиб =)
+// 	_, err = b.db.Exec(`
+// 		CREATE TABLE IF NOT EXISTS thanks (
+// 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+// 			chat_id INTEGER NOT NULL,
+// 			from_user_id INTEGER NOT NULL,
+// 			to_user_id INTEGER NOT NULL,
+// 			text TEXT NOT NULL,
+// 			timestamp INTEGER NOT NULL,
+// 			message_id INTEGER NOT NULL,
+// 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+// 			FOREIGN KEY (from_user_id) REFERENCES users(user_id),
+// 			FOREIGN KEY (to_user_id) REFERENCES users(user_id)
+// 		)`)
+// 	if err != nil {
+// 		return fmt.Errorf("ошибка создания таблицы для спасибо: %v", err)
+// 	}
+
+// 	// Создаем таблицу для хранения контекста общения
+// 	_, err = b.db.Exec(`
+// 		CREATE TABLE IF NOT EXISTS chat_context (
+// 			id INTEGER PRIMARY KEY AUTOINCREMENT,
+// 			chat_id INTEGER NOT NULL,
+// 			user_id INTEGER NOT NULL,
+// 			role TEXT NOT NULL,  -- 'user' или 'assistant'
+// 			content TEXT NOT NULL,
+// 			timestamp INTEGER NOT NULL,
+// 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+// 			FOREIGN KEY (chat_id) REFERENCES chats(id),
+// 			FOREIGN KEY (user_id) REFERENCES users(id)
+// 		)`)
+// 	if err != nil {
+// 		return fmt.Errorf("ошибка создания таблицы контекста: %v", err)
+// 	}
+
+// 	// Создаем таблицу биллинга токенов AI
+// 	_, err = b.db.Exec(`
+//         CREATE TABLE IF NOT EXISTS ai_billing (
+//             id INTEGER PRIMARY KEY AUTOINCREMENT,
+//             user_id INTEGER NOT NULL,
+//             chat_id INTEGER NOT NULL,
+//             timestamp INTEGER NOT NULL,
+//             model TEXT NOT NULL,
+//             prompt_tokens INTEGER NOT NULL,
+//             completion_tokens INTEGER NOT NULL,
+//             total_tokens INTEGER NOT NULL,
+//             cost REAL NOT NULL,
+//             FOREIGN KEY (user_id) REFERENCES users(id),
+//             FOREIGN KEY (chat_id) REFERENCES chats(id)
+//         )`)
+// 	if err != nil {
+// 		return fmt.Errorf("ошибка создания таблицы биллинга AI: %v", err)
+// 	}
+
+// 	// Создаем индексы
+// 	_, err = b.db.Exec(`
+// 		CREATE INDEX IF NOT EXISTS idx_thanks_from_user ON thanks(from_user_id);
+// 		CREATE INDEX IF NOT EXISTS idx_thanks_to_user ON thanks(to_user_id);
+// 		CREATE INDEX IF NOT EXISTS idx_thanks_chat ON thanks(chat_id);
+// 		CREATE INDEX IF NOT EXISTS idx_context_chat_user ON chat_context(chat_id, user_id);
+// 		CREATE INDEX IF NOT EXISTS idx_context_timestamp ON chat_context(timestamp);
+// 		CREATE INDEX IF NOT EXISTS idx_ai_billing_user ON ai_billing(user_id);
+// 		CREATE INDEX IF NOT EXISTS idx_ai_billing_timestamp ON ai_billing(timestamp);
+// 		CREATE INDEX IF NOT EXISTS idx_users_role_user ON users_role(user_id);
+// 		CREATE INDEX IF NOT EXISTS idx_users_role_channel ON users_role(channel_id);
+// 		`)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	return nil
+// }
+
 func (b *Bot) initDB() error {
-	// Создаем таблицу чатов
-	_, err := b.db.Exec(`
-		CREATE TABLE IF NOT EXISTS chats (
-			id INTEGER PRIMARY KEY,
-			title TEXT,
-			type TEXT,
-			username TEXT,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`)
-	if err != nil {
-		return fmt.Errorf("ошибка создания таблицы чатов: %v", err)
+	// Список миграций в порядке их применения
+	migrations := []struct {
+		name string
+		sql  string
+	}{
+		{
+			name: "initial_schema",
+			sql: `
+                CREATE TABLE IF NOT EXISTS chats (
+                    id INTEGER PRIMARY KEY,
+                    title TEXT,
+                    type TEXT,
+                    username TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            `,
+		},
+		{
+			name: "add_messages_table",
+			sql: `
+                CREATE TABLE IF NOT EXISTS messages (
+                    id INTEGER PRIMARY KEY,
+                    chat_id INTEGER,
+                    user_id INTEGER,
+                    text TEXT,
+                    timestamp INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(chat_id) REFERENCES chats(id),
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                );
+            `,
+		},
+		{
+			name: "add_thanks_table",
+			sql: `
+                CREATE TABLE IF NOT EXISTS thanks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER NOT NULL,
+                    from_user_id INTEGER NOT NULL,
+                    to_user_id INTEGER NOT NULL,
+                    text TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    message_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (from_user_id) REFERENCES users(id),
+                    FOREIGN KEY (to_user_id) REFERENCES users(id)
+                );
+            `,
+		},
+		{
+			name: "add_chat_context_table",
+			sql: `
+                CREATE TABLE IF NOT EXISTS chat_context (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (chat_id) REFERENCES chats(id),
+                    FOREIGN KEY (user_id) REFERENCES users(id)
+                );
+            `,
+		},
+		{
+			name: "add_ai_billing_table",
+			sql: `
+                CREATE TABLE IF NOT EXISTS ai_billing (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    chat_id INTEGER NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    model TEXT NOT NULL,
+                    prompt_tokens INTEGER NOT NULL,
+                    completion_tokens INTEGER NOT NULL,
+                    total_tokens INTEGER NOT NULL,
+                    cost REAL NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (chat_id) REFERENCES chats(id)
+                );
+            `,
+		},
+		{
+			name: "add_users_role_table",
+			sql: `
+                CREATE TABLE IF NOT EXISTS users_role (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    channel_id INTEGER NOT NULL,
+                    role TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(id),
+                    FOREIGN KEY (channel_id) REFERENCES chats(id),
+                    UNIQUE(user_id, channel_id)
+                );
+            `,
+		},
+		{
+			name: "add_ai_user_info_column",
+			sql:  `ALTER TABLE users ADD COLUMN ai_user_info TEXT;`,
+		},
+		{
+			name: "fix_thanks_foreign_keys",
+			sql: `
+                PRAGMA foreign_keys=off;
+                
+                BEGIN TRANSACTION;
+                
+                CREATE TABLE IF NOT EXISTS thanks_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER NOT NULL,
+                    from_user_id INTEGER NOT NULL,
+                    to_user_id INTEGER NOT NULL,
+                    text TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    message_id INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (from_user_id) REFERENCES users(id),
+                    FOREIGN KEY (to_user_id) REFERENCES users(id)
+                );
+                
+                INSERT INTO thanks_new SELECT * FROM thanks;
+                DROP TABLE thanks;
+                ALTER TABLE thanks_new RENAME TO thanks;
+                
+                COMMIT;
+                
+                PRAGMA foreign_keys=on;
+            `,
+		},
+		{
+			name: "create_initial_indexes",
+			sql: `
+                CREATE INDEX IF NOT EXISTS idx_thanks_from_user ON thanks(from_user_id);
+                CREATE INDEX IF NOT EXISTS idx_thanks_to_user ON thanks(to_user_id);
+                CREATE INDEX IF NOT EXISTS idx_thanks_chat ON thanks(chat_id);
+            `,
+		},
+		{
+			name: "create_context_indexes",
+			sql: `
+                CREATE INDEX IF NOT EXISTS idx_context_chat_user ON chat_context(chat_id, user_id);
+                CREATE INDEX IF NOT EXISTS idx_context_timestamp ON chat_context(timestamp);
+            `,
+		},
+		{
+			name: "create_ai_billing_indexes",
+			sql: `
+                CREATE INDEX IF NOT EXISTS idx_ai_billing_user ON ai_billing(user_id);
+                CREATE INDEX IF NOT EXISTS idx_ai_billing_timestamp ON ai_billing(timestamp);
+            `,
+		},
+		{
+			name: "create_users_role_indexes",
+			sql: `
+                CREATE INDEX IF NOT EXISTS idx_users_role_user ON users_role(user_id);
+                CREATE INDEX IF NOT EXISTS idx_users_role_channel ON users_role(channel_id);
+            `,
+		},
 	}
 
-	// Создаем таблицу пользователей
-	_, err = b.db.Exec(`
-		CREATE TABLE IF NOT EXISTS users (
-			id INTEGER PRIMARY KEY,
-			username TEXT,
-			first_name TEXT,
-			last_name TEXT,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)`)
-	if err != nil {
-		return fmt.Errorf("ошибка создания таблицы пользователей: %v", err)
-	}
-
-	// Создаем таблицу сообщений
-	_, err = b.db.Exec(`
-		CREATE TABLE IF NOT EXISTS messages (
-			id INTEGER PRIMARY KEY,
-			chat_id INTEGER,
-			user_id INTEGER,
-			text TEXT,
-			timestamp INTEGER,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY(chat_id) REFERENCES chats(id),
-			FOREIGN KEY(user_id) REFERENCES users(id)
-		)`)
-	if err != nil {
-		return fmt.Errorf("ошибка создания таблицы сообщений: %v", err)
-	}
-
-	// Создаем таблицу спасиб =)
-	_, err = b.db.Exec(`
-		CREATE TABLE IF NOT EXISTS thanks (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			chat_id INTEGER NOT NULL,
-			from_user_id INTEGER NOT NULL,
-			to_user_id INTEGER NOT NULL,
-			text TEXT NOT NULL,
-			timestamp INTEGER NOT NULL,
-			message_id INTEGER NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (from_user_id) REFERENCES users(user_id),
-			FOREIGN KEY (to_user_id) REFERENCES users(user_id)
-		)`)
-	if err != nil {
-		return fmt.Errorf("ошибка создания таблицы для спасибо: %v", err)
-	}
-
-	// Создаем таблицу для хранения контекста общения
-	_, err = b.db.Exec(`
-		CREATE TABLE IF NOT EXISTS chat_context (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			chat_id INTEGER NOT NULL,
-			user_id INTEGER NOT NULL,
-			role TEXT NOT NULL,  -- 'user' или 'assistant'
-			content TEXT NOT NULL,
-			timestamp INTEGER NOT NULL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (chat_id) REFERENCES chats(id),
-			FOREIGN KEY (user_id) REFERENCES users(id)
-		)`)
-	if err != nil {
-		return fmt.Errorf("ошибка создания таблицы контекста: %v", err)
-	}
-
-	// Создаем таблицу биллинга токенов AI
-	_, err = b.db.Exec(`
-        CREATE TABLE IF NOT EXISTS ai_billing (
+	// Создаем таблицу для отслеживания выполненных миграций
+	if _, err := b.db.Exec(`
+        CREATE TABLE IF NOT EXISTS migrations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            chat_id INTEGER NOT NULL,
-            timestamp INTEGER NOT NULL,
-            model TEXT NOT NULL,
-            prompt_tokens INTEGER NOT NULL,
-            completion_tokens INTEGER NOT NULL,
-            total_tokens INTEGER NOT NULL,
-            cost REAL NOT NULL,
-            FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (chat_id) REFERENCES chats(id)
-        )`)
-	if err != nil {
-		return fmt.Errorf("ошибка создания таблицы биллинга AI: %v", err)
+            name TEXT UNIQUE NOT NULL,
+            executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    `); err != nil {
+		return fmt.Errorf("ошибка создания таблицы миграций: %v", err)
 	}
 
-	// Создаем индексы
-	_, err = b.db.Exec(`
-		CREATE INDEX IF NOT EXISTS idx_thanks_from_user ON thanks(from_user_id);
-		CREATE INDEX IF NOT EXISTS idx_thanks_to_user ON thanks(to_user_id);
-		CREATE INDEX IF NOT EXISTS idx_thanks_chat ON thanks(chat_id);
-		CREATE INDEX IF NOT EXISTS idx_context_chat_user ON chat_context(chat_id, user_id);
-		CREATE INDEX IF NOT EXISTS idx_context_timestamp ON chat_context(timestamp);
-		CREATE INDEX IF NOT EXISTS idx_ai_billing_user ON ai_billing(user_id);
-		CREATE INDEX IF NOT EXISTS idx_ai_billing_timestamp ON ai_billing(timestamp);
-		`)
-	if err != nil {
-		return err
+	// Применяем миграции
+	for _, migration := range migrations {
+		// Проверяем, была ли уже выполнена эта миграция
+		var count int
+		err := b.db.QueryRow("SELECT COUNT(*) FROM migrations WHERE name = ?", migration.name).Scan(&count)
+		if err != nil {
+			return fmt.Errorf("ошибка проверки миграции %s: %v", migration.name, err)
+		}
+
+		if count == 0 {
+			// Выполняем миграцию
+			if _, err := b.db.Exec(migration.sql); err != nil {
+				// Игнорируем ошибки "duplicate column" и "index already exists"
+				if !strings.Contains(err.Error(), "duplicate column") &&
+					!strings.Contains(err.Error(), "already exists") &&
+					!strings.Contains(err.Error(), "duplicate index") {
+					return fmt.Errorf("ошибка выполнения миграции %s: %v", migration.name, err)
+				}
+			}
+
+			// Помечаем миграцию как выполненную
+			if _, err := b.db.Exec("INSERT INTO migrations (name) VALUES (?)", migration.name); err != nil {
+				return fmt.Errorf("ошибка записи миграции %s: %v", migration.name, err)
+			}
+
+			log.Printf("Применена миграция: %s", migration.name)
+		}
 	}
 
 	return nil
