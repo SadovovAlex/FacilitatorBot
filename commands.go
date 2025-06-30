@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"math/rand"
 	"strconv"
 	"strings"
@@ -45,6 +46,8 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 	case "say", "сказать":
 		b.handleAdminCommand(message)
 		return
+	case "img":
+		b.handleMem(message)
 	default:
 		b.handleUnknownCommand(message)
 	}
@@ -121,4 +124,66 @@ func (b *Bot) handleUnknownCommand(message *tgbotapi.Message) {
 	response := responses[rand.Intn(len(responses))]
 
 	b.sendMessage(message.Chat.ID, response)
+}
+
+// handleMem обрабатывает команду /mem
+func (b *Bot) handleMem(message *tgbotapi.Message) {
+	chatID := message.Chat.ID
+
+	// Проверяем, является ли пользователь администратором
+	isAdmin, err := b.IsUserAdmin(message.Chat.ID, message.From.ID)
+	if err != nil {
+		b.sendMessage(message.Chat.ID, "Ошибка проверки прав администратора")
+		return
+	}
+	if !isAdmin {
+		b.sendMessage(message.Chat.ID, "У вас нет прав администратора в этой группе")
+		return
+	}
+
+	// Отправляем индикатор печати
+	if _, err := b.tgBot.Request(tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)); err != nil {
+		log.Printf("[GenerateImage] Ошибка отправки индикатора печати: %v", err)
+	}
+
+	// Запускаем горутину для периодической отправки индикатора печати
+	stopTyping := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				chatAction := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+				if _, err := b.tgBot.Request(chatAction); err != nil {
+					log.Printf("[GenerateImage] Ошибка отправки индикатора печати: %v", err)
+				}
+			case <-stopTyping:
+				return
+			}
+		}
+	}()
+	defer close(stopTyping)
+
+	// Получаем описание из текста сообщения после команды
+	description := strings.TrimSpace(message.CommandArguments())
+	if description == "" {
+		b.sendMessage(chatID, "Пожалуйста, укажите описание для изображения после команды /mem")
+		return
+	}
+
+	// Генерируем изображение
+	photo, err := b.GenerateImage(description, chatID)
+	if err != nil {
+		log.Printf("Ошибка генерации изображения: %v", err)
+		b.sendMessage(chatID, "Не удалось сгенерировать изображение. Попробуйте снова.")
+		return
+	}
+
+	// Отправляем изображение
+	_, err = b.tgBot.Send(*photo)
+	if err != nil {
+		log.Printf("Ошибка отправки изображения: %v", err)
+		b.sendMessage(chatID, "Не удалось отправить изображение. Попробуйте снова.")
+	}
 }

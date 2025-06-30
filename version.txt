@@ -1,3 +1,13 @@
+30.06.2025
+feat: add image generation command
+
+- Added /img command for generating images
+- Added admin checks for image generation
+- Added typing indicators during image generation
+- Increased API timeout to 60 seconds
+- Added detailed logging for image generation process
+- Improved error handling and user feedback
+
 26.06.2025
 refactor: combine admin checks and add build number tracking
 

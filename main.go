@@ -41,6 +41,7 @@ type Config struct {
 	ContextTimeLimit     int                // размер в часах хранения контекста
 	ContextRetentionDays int                //удаление контекста диалога с пользователем из БД
 	TokenCosts           map[string]float64 // стоимость токенов для разных моделей
+	AIImageURL           string             // URL для генерации изображений
 
 }
 
@@ -188,6 +189,7 @@ func main() {
 		ContextTimeLimit:     4,
 		ContextRetentionDays: 7,
 		DBPath:               getEnv("DB_PATH", "telegram_bot.db"),
+		AIImageURL:           getEnv("AI_IMAGE_URL", "https://image.pollinations.ai/prompt/"),
 		SummaryPrompt:        "Generate concise Russian summary of discussion. Highlight key topics. Format authors as name(@username). Use only these messages:\n%s\nReply in Russian. Sometimes mention the time hour of messages.",
 		SystemPrompt:         "You're an AI assistant that creates concise Russian summaries of chat discussions. Identify main topics and essence. Always reply in Russian. Do not answer think.",
 		AnekdotPrompt:        "Using these messages, create a short funny joke in Russian, loosely related to discussion. Format as one cohesive text. Don't use usernames:\n%s\nReply in Russian only.",
@@ -426,7 +428,9 @@ func (b *Bot) handleSummaryRequest(message *tgbotapi.Message, count int) {
 		return
 	}
 
-	messages, err := b.getRecentMessages(-1002478281670, count) //Выборка из БД только Атипичный Чат
+	//messages, err := b.getRecentMessages(-1002478281670, count) //Выборка из БД только Атипичный Чат
+	messages, err := b.getRecentMessages(chatID, count)
+
 	if err != nil {
 		fmt.Printf("ошибка получения сообщений: %v", err)
 		return
