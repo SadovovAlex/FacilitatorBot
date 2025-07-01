@@ -28,7 +28,7 @@ func (b *Bot) GenerateImage(description string, chatID int64, enableDescription 
 
 	// Подготовка URL для запроса
 	url := b.config.AIImageURL + url.QueryEscape(description)
-	//log.Printf("[GenerateImage] URL запроса: %s", url)
+	log.Printf("[GenerateImage] URL запроса: %s", url)
 
 	// Выполнение HTTP GET запроса с таймаутом
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
