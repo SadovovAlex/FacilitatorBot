@@ -106,13 +106,13 @@ func (b *Bot) removeBotMention(text string) string {
 	return text
 }
 
-// // Вспомогательная функция для обрезания текста
-// func truncateText(text string, maxLength int) string {
-// 	if len(text) > maxLength {
-// 		return text[:maxLength] + "..."
-// 	}
-// 	return text
-// }
+// Вспомогательная функция для обрезания текста
+func (b *Bot) truncateText(text string, maxLength int) string {
+	if len(text) > maxLength {
+		return text[:maxLength] + "..."
+	}
+	return text
+}
 
 // checkForThanks проверяет сообщение на наличие слов благодарности и сохраняет в БД// checkForThanks проверяет сообщение на наличие слов благодарности
 func (b *Bot) checkForThanks(message *tgbotapi.Message) {

@@ -125,7 +125,7 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgb
 	// Логируем параметры запроса
 	log.Printf("[generateAiRequest] Начало запроса к AI. ChatID: %d, Model: %s", message.Chat.ID, b.config.AiModelName)
 	log.Printf("[generateAiRequest] System prompt: %s", systemPrompt)
-	log.Printf("[generateAiRequest] User prompt length: %v", (prompt))
+	log.Printf("[generateAiRequest] User prompt length: %v", b.truncateText(prompt, 128))
 
 	request := LocalLLMRequest{
 		Model: b.config.AiModelName,
