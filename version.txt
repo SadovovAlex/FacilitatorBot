@@ -1,4 +1,14 @@
 02.06.2025
+refactor: improve logging and message formatting
+
+- Fix messagesText formatting in handleAISummary
+- Add proper message content to messagesText.Builder
+- Comment out redundant logging in message loop
+- Improve error handling in generateAiRequest
+- Add timing information to AI request logging
+- Fix lint errors in ai.go
+- Update version.txt with logging improvements
+
 refactor: update logging and image generation
 
 - Replace fmt.Println with log.Printf for consistent logging
@@ -11,6 +21,7 @@ refactor: update logging and image generation
 - Improve summary generation messages
 - Fix chat action logging prefix
 - Add proper error handling for image generation
+- Add detailed logging for AI requests with timing information
 
 01.06.2025
 refactor: improve logging and image generation

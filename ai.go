@@ -40,10 +40,14 @@ func (b *Bot) GenerateImage(description string, chatID int64, enableDescription 
 	start := time.Now()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		log.Printf("[GenerateImage] Ошибка выполнения запроса к API: %v", err)
+		elapsed := time.Since(start)
+		log.Printf("[GenerateImage] Ошибка выполнения запроса к API. Время: %v, Ошибка: %v", elapsed, err)
 		return nil, fmt.Errorf("ошибка при выполнении запроса к API: %v", err)
 	}
 	defer resp.Body.Close()
+
+	// Логируем статус ответа
+	log.Printf("[GenerateImage] Получен ответ от API. Статус: %s", resp.Status)
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[GenerateImage] API вернул ошибку: %s", resp.Status)
@@ -53,9 +57,14 @@ func (b *Bot) GenerateImage(description string, chatID int64, enableDescription 
 	// Чтение ответа
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("[GenerateImage] Ошибка чтения ответа: %v", err)
+		elapsed := time.Since(start)
+		log.Printf("[GenerateImage] Ошибка чтения ответа. Время: %v, Ошибка: %v", elapsed, err)
 		return nil, fmt.Errorf("ошибка чтения ответа: %v", err)
 	}
+
+	// Логируем успешный ответ
+	elapsed := time.Since(start)
+	log.Printf("[GenerateImage] Успешно получено ответа. Время: %v", elapsed)
 
 	// Обработка изображения
 	img, _, err := image.Decode(bytes.NewReader(body))
@@ -106,15 +115,20 @@ func (b *Bot) GenerateImage(description string, chatID int64, enableDescription 
 		photo.Caption = description
 	}
 
-	elapsed := time.Since(start)
+	elapsed = time.Since(start)
 	log.Printf("[GenerateImage] Cгенерировано img для chatID: %d. Время: %v", chatID, elapsed)
 
 	return &photo, nil
 }
 
 func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgbotapi.Message) (string, error) {
+	// Логируем параметры запроса
+	log.Printf("[generateAiRequest] Начало запроса к AI. ChatID: %d, Model: %s", message.Chat.ID, b.config.AiModelName)
+	log.Printf("[generateAiRequest] System prompt: %s", systemPrompt)
+	log.Printf("[generateAiRequest] User prompt length: %v", (prompt))
+
 	request := LocalLLMRequest{
-		Model: b.config.AiModelName, // Имя модели может быть любым для локальной LLM
+		Model: b.config.AiModelName,
 		Messages: []LocalLLMMessage{
 			{
 				Role:    "system",
@@ -134,7 +148,9 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgb
 		return "", fmt.Errorf("ошибка маршалинга запроса: %v", err)
 	}
 
-	log.Printf("Get AI %v data: %v", b.config.LocalLLMUrl, request)
+	// Логируем отправку запроса
+	log.Printf("[generateAiRequest] Отправка запроса к %s", b.config.LocalLLMUrl)
+
 	resp, err := b.httpClient.Post(b.config.LocalLLMUrl, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("ошибка HTTP запроса: %v", err)

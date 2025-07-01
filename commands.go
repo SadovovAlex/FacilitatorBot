@@ -150,11 +150,19 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 		// Переводим время сообщения в часовой пояс GMT+3
 		msgTimeGMT3 := msgTime.In(gmt3)
 
-		log.Printf("[%s] %s(%v): %s",
+		// Форматируем и добавляем сообщение в буфер
+		messagesText.WriteString(fmt.Sprintf("[%s] %s(%v): %s\n",
 			msgTimeGMT3.Format("15:04"),
 			msg.UserFirstName,
 			msg.Username,
-			msg.Text)
+			msg.Text))
+
+		// // Логируем сообщение
+		// log.Printf("[%s] %s(%v): %s",
+		// 	msgTimeGMT3.Format("15:04"),
+		// 	msg.UserFirstName,
+		// 	msg.Username,
+		// 	msg.Text)
 	}
 
 	// Создание сводки с помощью локальной LLM
