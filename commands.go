@@ -136,7 +136,7 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 
 	if len(messages) == 0 {
 		message := fmt.Sprintf("Последние %v часов, я похоже спал =)", CHECK_HOURS*-1)
-		fmt.Println(message)
+		log.Println(message)
 		b.sendMessage(chatID, message)
 		return
 	}
@@ -150,7 +150,7 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 		// Переводим время сообщения в часовой пояс GMT+3
 		msgTimeGMT3 := msgTime.In(gmt3)
 
-		fmt.Fprintf(&messagesText, "[%s] %s(%v): %s\n",
+		log.Printf("[%s] %s(%v): %s",
 			msgTimeGMT3.Format("15:04"),
 			msg.UserFirstName,
 			msg.Username,
@@ -161,29 +161,24 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.SummaryPrompt, messagesText.String()), message)
 	if err != nil {
 		log.Printf("[handleSummary] Ошибка генерации сводки: %v", err)
-		b.sendMessage(chatID, "Не удалось сгенерировать сводку.")
+		b.sendMessage(chatID, "Не удалось сгенерировать сводку обсуждений.")
 		return
 	}
 
+	b.sendMessage(chatID, "📝 Сводка обсуждений:\n\n"+summary)
+	b.lastSummary[chatID] = time.Now()
+
 	// Генерируем изображение на основе сводки
-	description := fmt.Sprintf(b.config.ImagePrompt, " Visualize this summary: %s", summary)
+	description := fmt.Sprintf(b.config.ImagePrompt, " Нарисуй картинку показывающую обсуждения: %s", summary)
 	photo, err := b.GenerateImage(description, chatID, false)
 	if err != nil {
 		// Если не удалось сгенерировать изображение, отправляем текст
-		log.Printf("[handleAISummary] Ошибка генерации изображения: %v", err)
-		b.sendMessage(chatID, "📝 Сводка обсуждений:\n\n"+summary)
-		b.lastSummary[chatID] = time.Now()
+		log.Printf("[handleSummary] Ошибка генерации изображения: %v", err)
 		return
 	}
 
-	// Если сводка длинная, отправляем её отдельным сообщением
-	if len(summary) > 1024 {
-		b.sendMessage(chatID, "📝 Сводка обсуждений:\n\n"+summary)
-		photo.Caption = ""
-	} else {
-		photo.Caption = summary
-	}
 	// Отправляем изображение с кратким описанием
+	photo.Caption = ""
 	b.tgBot.Send(photo)
 	b.lastSummary[chatID] = time.Now()
 }
@@ -230,7 +225,7 @@ func (b *Bot) handleGenImage(message *tgbotapi.Message) {
 
 	// Отправляем индикатор печати
 	if _, err := b.tgBot.Request(tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)); err != nil {
-		log.Printf("[GenerateImage] Ошибка отправки индикатора печати: %v", err)
+		log.Printf("[handleGenImage] Ошибка отправки индикатора печати: %v", err)
 	}
 
 	// Запускаем горутину для периодической отправки индикатора печати
@@ -243,7 +238,7 @@ func (b *Bot) handleGenImage(message *tgbotapi.Message) {
 			case <-ticker.C:
 				chatAction := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
 				if _, err := b.tgBot.Request(chatAction); err != nil {
-					log.Printf("[GenerateImage] Ошибка отправки индикатора печати: %v", err)
+					log.Printf("[handleGenImage] Ошибка отправки индикатора печати: %v", err)
 				}
 			case <-stopTyping:
 				return
@@ -259,11 +254,21 @@ func (b *Bot) handleGenImage(message *tgbotapi.Message) {
 		return
 	}
 
+	// // Создание промпта для генерации картинки с помощью LLM
+	// promptImg, err := b.generateAiRequest("ты иллюстратор рисующий A cartoonish black wolf with big, expressive eyes and sharp teeth, dynamically posing while holding random objects (e.g., a coffee cup, umbrella, or sandwich). The wolf looks slightly confused or nervous. Simple gray background with subtle rain streaks. Stylized as a humorous comic—flat colors, bold outlines, exaggerated expressions. Footer: small copyright text (с)wrwfx in English. ",
+	// 	"Сгенерируй промпт для AI по генерации картинки по теме:"+description, message)
+	// if err != nil {
+	// 	log.Printf("[handleGenImage] Ошибка генерации: %v", err)
+	// 	b.sendMessage(chatID, "Не удалось. Попробуйте позднее.")
+	// 	return
+	// }
+	// log.Println("[handleGenImage]" + promptImg)
+
 	// Генерируем изображение
-	photo, err := b.GenerateImage(description, chatID, true)
+	photo, err := b.GenerateImage(b.config.ImagePrompt, chatID, false)
 	if err != nil {
 		log.Printf("Ошибка генерации изображения: %v", err)
-		b.sendMessage(chatID, "Не удалось сгенерировать изображение. Попробуйте снова.")
+		b.sendMessage(chatID, "Не удалось сгенерировать изображение. Попробуйте позднее.")
 		return
 	}
 

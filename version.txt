@@ -1,3 +1,17 @@
+02.06.2025
+refactor: update logging and image generation
+
+- Replace fmt.Println with log.Printf for consistent logging
+- Update image generation prompts for better clarity
+- Improve error messages for image generation
+- Add username to admin logging
+- Comment out unused functions in tools.go
+- Create new stats.go file
+- Update AI prompts for better image generation
+- Improve summary generation messages
+- Fix chat action logging prefix
+- Add proper error handling for image generation
+
 01.06.2025
 refactor: improve logging and image generation
 

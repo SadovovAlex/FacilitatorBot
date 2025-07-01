@@ -48,7 +48,8 @@ func (b *Bot) handleSay(message *tgbotapi.Message) {
 func (b *Bot) IsUserAdmin(chatID, userID int64) (bool, error) {
 	// Проверяем, является ли пользователь безусловным админом
 	if allowedAdmins[userID] {
-		log.Printf("[Admin] User %d is unconditional admin", userID)
+		username, _ := b.getUserByID(userID)
+		log.Printf("[Admin] User %v %d is admin", username, userID)
 		return true, nil
 	}
 
