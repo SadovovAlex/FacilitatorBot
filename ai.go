@@ -11,13 +11,14 @@ import (
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-func (b *Bot) GenerateImage(description string, chatID int64) (*tgbotapi.PhotoConfig, error) {
-	log.Printf("[GenerateImage] Начало генерации изображения для chatID: %d", chatID)
-	log.Printf("[GenerateImage] Описание: %s", description)
+func (b *Bot) GenerateImage(description string, chatID int64, enableDescription bool) (*tgbotapi.PhotoConfig, error) {
+	log.Printf("[GenerateImage] Генерация img для chatID: %d", chatID)
+	//log.Printf("[GenerateImage] Описание: %s", description)
 
 	// Создаем контекст с таймаутом
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -25,7 +26,7 @@ func (b *Bot) GenerateImage(description string, chatID int64) (*tgbotapi.PhotoCo
 
 	// Подготовка URL для запроса
 	url := b.config.AIImageURL + url.QueryEscape(description)
-	log.Printf("[GenerateImage] URL запроса: %s", url)
+	//log.Printf("[GenerateImage] URL запроса: %s", url)
 
 	// Выполнение HTTP GET запроса с таймаутом
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -56,42 +57,33 @@ func (b *Bot) GenerateImage(description string, chatID int64) (*tgbotapi.PhotoCo
 
 	// Создание сообщения с изображением
 	photo := tgbotapi.NewPhoto(chatID, tgbotapi.FileBytes{
-		Name:  "image.jpg",
+		Name:  "aiimage.jpg",
 		Bytes: body,
 	})
-	photo.Caption = description
+
+	if enableDescription {
+		// Обрезаем caption до максимальной длины Telegram API (128 символа)
+		if len(description) > 128 {
+			description = description[:128] + "..."
+		}
+
+		// Проверяем и исправляем UTF-8 кодировку
+		if !utf8.ValidString(description) {
+			// Если строка не в UTF-8, преобразуем её
+			utf8Description := string([]rune(description))
+			description = utf8Description
+		}
+
+		photo.Caption = description
+	}
 
 	elapsed := time.Since(start)
-	log.Printf("[GenerateImage] Успешно сгенерировано изображение для chatID: %d. Время: %v", chatID, elapsed)
+	log.Printf("[GenerateImage] Cгенерировано img для chatID: %d. Время: %v", chatID, elapsed)
 
 	return &photo, nil
 }
 
 func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgbotapi.Message) (string, error) {
-	// Отправляем индикатор печати
-	if _, err := b.tgBot.Request(tgbotapi.NewChatAction(message.Chat.ID, tgbotapi.ChatTyping)); err != nil {
-		log.Printf("Ошибка отправки индикатора печати: %v", err)
-	}
-	// Запускаем горутину для периодической отправки индикатора печати, канал stopTyping не забываем закрыть!!!
-	stopTyping := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(5 * time.Second) // Отправляем каждые 5 секунд
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				// Отправляем индикатор печати
-				chatAction := tgbotapi.NewChatAction(message.Chat.ID, tgbotapi.ChatTyping)
-				if _, err := b.tgBot.Request(chatAction); err != nil {
-					log.Printf("Ошибка отправки индикатора печати: %v", err)
-				}
-			case <-stopTyping:
-				return
-			}
-		}
-	}()
-	defer close(stopTyping)
-
 	request := LocalLLMRequest{
 		Model: b.config.AiModelName, // Имя модели может быть любым для локальной LLM
 		Messages: []LocalLLMMessage{

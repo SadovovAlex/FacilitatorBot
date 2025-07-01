@@ -345,24 +345,37 @@ func (b *Bot) Run() {
 	}
 }
 
-// processMessage обрабатывает входящие сообщения
 func (b *Bot) processMessage(message *tgbotapi.Message) {
+	chatID := message.Chat.ID
+	userID := message.From.ID
+	msgText := message.Text
+	if msgText == "" && message.Caption != "" {
+		msgText = message.Caption
+	}
+
+	// Логируем информацию о сообщении
+	log.Printf("[processMessage] Cообщение от %d в чате %d: %q", userID, chatID, msgText)
+
 	// Обработка команд
 	if message.IsCommand() {
+		log.Printf("[processMessage]Команда: %s", message.Command())
 		b.handleCommand(message)
 		return
 	}
 
 	// Проверяем, обращается ли пользователь к боту
 	if b.isBotMentioned(message) {
+		log.Printf("[processMessage]Обращение к боту")
 		b.handleBotMention(message)
 		return
 	}
 
 	// Обработка reply-сообщений
 	if message.ReplyToMessage != nil {
+		log.Printf("[processMessage] Reply")
 		// Проверяем, является ли reply на сообщение бота
 		if message.ReplyToMessage.From != nil && message.ReplyToMessage.From.ID == b.tgBot.Self.ID {
+			log.Printf("[processMessage] Reply на сообщение бота")
 			b.handleReplyToBot(message)
 			return
 		}
@@ -372,7 +385,6 @@ func (b *Bot) processMessage(message *tgbotapi.Message) {
 	if message.Chat.IsGroup() || message.Chat.IsSuperGroup() {
 		b.storeMessage(message)
 	}
-
 }
 
 // handleBotMention обрабатывает сообщения, адресованные боту
@@ -406,7 +418,7 @@ func (b *Bot) handleBotMention(message *tgbotapi.Message) {
 				}
 			}
 		}
-		b.handleSummaryRequest(message, count)
+		b.handleAISummary(message, count)
 	case strings.Contains(strings.ToLower(cleanText), "помощь"),
 		strings.Contains(strings.ToLower(cleanText), "help"),
 		strings.Contains(strings.ToLower(cleanText), "команды"):
@@ -416,64 +428,6 @@ func (b *Bot) handleBotMention(message *tgbotapi.Message) {
 		//TODO добавить отправку в AI запроса
 		b.handleReplyToBot(message)
 	}
-}
-
-// handleSummaryRequest обрабатывает запрос на сводку текущего чата
-func (b *Bot) handleSummaryRequest(message *tgbotapi.Message, count int) {
-	chatID := message.Chat.ID
-
-	// Проверка разрешен ли чат
-	if !b.isChatAllowed(chatID) {
-		b.sendMessage(chatID, "Извините, у меня нет доступа к истории этого чата.")
-		return
-	}
-
-	//messages, err := b.getRecentMessages(-1002478281670, count) //Выборка из БД только Атипичный Чат
-	messages, err := b.getRecentMessages(chatID, count)
-
-	if err != nil {
-		fmt.Printf("ошибка получения сообщений: %v", err)
-		return
-	}
-
-	if len(messages) == 0 {
-		message := fmt.Sprintf("Последние %v часов, я похоже спал =)", CHECK_HOURS*-1)
-		fmt.Println(message)
-		b.sendMessage(chatID, message)
-		return
-	}
-
-	// Форматируем историю сообщений
-	var messagesText strings.Builder
-	for _, msg := range messages {
-		msgTime := time.Unix(msg.Timestamp, 0)
-		// Создаем часовой пояс GMT+3
-		gmt3 := time.FixedZone("GMT+3", 3*60*60)
-		// Переводим время сообщения в часовой пояс GMT+3
-		msgTimeGMT3 := msgTime.In(gmt3)
-
-		fmt.Fprintf(&messagesText, "[%s] %s(%v): %s\n",
-			msgTimeGMT3.Format("15:04"),
-			msg.UserFirstName,
-			msg.Username,
-			msg.Text)
-	}
-
-	//fmt.Println(messagesText.String())
-
-	// Создание сводки с помощью локальной LLM
-	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.SummaryPrompt, messagesText.String()), message)
-
-	if err != nil {
-		log.Printf("Ошибка генерации сводки: %v", err)
-		b.sendMessage(chatID, "Произошла ошибка при создании сводки.")
-		return
-	}
-
-	fmt.Printf("Resp AI: %v", summary)
-
-	b.sendMessage(chatID, "📝 Сводка обсуждений:\n\n"+summary)
-	b.lastSummary[chatID] = time.Now()
 }
 
 // handleGetTopAIUsers возвращает топ пользователей по использованию токенов в читаемом формате
@@ -663,8 +617,13 @@ func (b *Bot) handleStatsRequest(message *tgbotapi.Message) {
 	b.sendMessage(chatID, statsMsg.String())
 }
 
-// storeMessage сохраняет сообщение в истории чата
 func (b *Bot) storeMessage(message *tgbotapi.Message) {
+	chatID := message.Chat.ID
+	userID := message.From.ID
+
+	// Логируем ID чата и пользователя
+	log.Printf("[storeMessage] Сохранение от %d в чате %d", userID, chatID)
+
 	// Пропускаем служебные сообщения
 	if message.Text == "" {
 		// Проверяем наличие подписи (для медиа-сообщений)
@@ -673,14 +632,13 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 		}
 	}
 
-	chatID := message.Chat.ID
-	userID := message.From.ID
-
 	// Проверяем, может ли бот читать сообщения в этом чате
 	if !b.canBotReadMessages(chatID) {
 		log.Printf("Бот не может читать сообщения в чате %d", chatID)
 		return
 	}
+
+	log.Printf("")
 
 	// Используем текст или подпись (для медиа-сообщений)
 	text := message.Text

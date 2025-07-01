@@ -31,7 +31,7 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 	case "ping", "пинг":
 		b.handlePing(message)
 	case "summary", "саммари":
-		b.handleSummary(message)
+		b.handleAISummary(message, 0)
 	case "stat", "stats":
 		b.handleStats(message)
 	case "aistat", "aistats":
@@ -47,7 +47,7 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 		b.handleAdminCommand(message)
 		return
 	case "img":
-		b.handleMem(message)
+		b.handleGenImage(message)
 	default:
 		b.handleUnknownCommand(message)
 	}
@@ -84,10 +84,39 @@ func (b *Bot) handlePing(message *tgbotapi.Message) {
 }
 
 // handleSummary обрабатывает команду /summary
-func (b *Bot) handleSummary(message *tgbotapi.Message) {
-	args := strings.Fields(message.CommandArguments())
-	count := LIMIT_MSG
+func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
+	chatID := message.Chat.ID
 
+	// Запускаем горутину для периодической отправки индикатора печати
+	stopTyping := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				chatAction := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+				if _, err := b.tgBot.Request(chatAction); err != nil {
+					log.Printf("[GenerateImage] Ошибка отправки индикатора печати: %v", err)
+				}
+			case <-stopTyping:
+				return
+			}
+		}
+	}()
+	defer close(stopTyping)
+
+	// Проверка разрешен ли чат
+	if !b.isChatAllowed(chatID) {
+		b.sendMessage(chatID, "Извините, у меня нет доступа к истории этого чата.")
+		return
+	}
+
+	if count == 0 {
+		count = LIMIT_MSG
+	}
+
+	args := strings.Fields(message.CommandArguments())
 	if len(args) > 0 {
 		if num, err := strconv.Atoi(args[0]); err == nil && num > 0 {
 			count = num
@@ -98,7 +127,58 @@ func (b *Bot) handleSummary(message *tgbotapi.Message) {
 		}
 	}
 
-	b.handleSummaryRequest(message, count)
+	messages, err := b.getRecentMessages(chatID, count)
+	if err != nil {
+		log.Printf("[handleSummary] Ошибка получения сообщений: %v", err)
+		b.sendMessage(chatID, "Не удалось получить историю сообщений.")
+		return
+	}
+
+	if len(messages) == 0 {
+		message := fmt.Sprintf("Последние %v часов, я похоже спал =)", CHECK_HOURS*-1)
+		fmt.Println(message)
+		b.sendMessage(chatID, message)
+		return
+	}
+
+	// Форматируем историю сообщений
+	var messagesText strings.Builder
+	for _, msg := range messages {
+		msgTime := time.Unix(msg.Timestamp, 0)
+		// Создаем часовой пояс GMT+3
+		gmt3 := time.FixedZone("GMT+3", 3*60*60)
+		// Переводим время сообщения в часовой пояс GMT+3
+		msgTimeGMT3 := msgTime.In(gmt3)
+
+		fmt.Fprintf(&messagesText, "[%s] %s(%v): %s\n",
+			msgTimeGMT3.Format("15:04"),
+			msg.UserFirstName,
+			msg.Username,
+			msg.Text)
+	}
+
+	// Создание сводки с помощью локальной LLM
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.SummaryPrompt, messagesText.String()), message)
+	if err != nil {
+		log.Printf("[handleSummary] Ошибка генерации сводки: %v", err)
+		b.sendMessage(chatID, "Не удалось сгенерировать сводку.")
+		return
+	}
+
+	// Генерируем изображение на основе сводки
+	description := fmt.Sprintf("A cartoonish black wolf with big eyes and sharp teeth, randomly holding various objects, in a dynamic pose. The wolf looks slightly confused or nervous. Simple gray background with sparse streaks mimicking rain. Stylized as a humorous comic, flat colors, bold outlines. Visualize this summary: %s", summary)
+	photo, err := b.GenerateImage(description, chatID, false)
+	if err != nil {
+		// Если не удалось сгенерировать изображение, отправляем текст
+		log.Printf("[handleAISummary] Ошибка генерации изображения: %v", err)
+		b.sendMessage(chatID, "📝 Сводка обсуждений:\n\n"+summary)
+		b.lastSummary[chatID] = time.Now()
+		return
+	}
+
+	// Отправляем изображение с кратким описанием
+	b.tgBot.Send(photo)
+	b.lastSummary[chatID] = time.Now()
 }
 
 // handleClear обрабатывает команду /clear
@@ -127,7 +207,7 @@ func (b *Bot) handleUnknownCommand(message *tgbotapi.Message) {
 }
 
 // handleMem обрабатывает команду /mem
-func (b *Bot) handleMem(message *tgbotapi.Message) {
+func (b *Bot) handleGenImage(message *tgbotapi.Message) {
 	chatID := message.Chat.ID
 
 	// Проверяем, является ли пользователь администратором
@@ -168,12 +248,12 @@ func (b *Bot) handleMem(message *tgbotapi.Message) {
 	// Получаем описание из текста сообщения после команды
 	description := strings.TrimSpace(message.CommandArguments())
 	if description == "" {
-		b.sendMessage(chatID, "Пожалуйста, укажите описание для изображения после команды /mem")
+		b.sendMessage(chatID, "Пожалуйста, укажите описание для изображения после команды /img")
 		return
 	}
 
 	// Генерируем изображение
-	photo, err := b.GenerateImage(description, chatID)
+	photo, err := b.GenerateImage(description, chatID, true)
 	if err != nil {
 		log.Printf("Ошибка генерации изображения: %v", err)
 		b.sendMessage(chatID, "Не удалось сгенерировать изображение. Попробуйте снова.")
