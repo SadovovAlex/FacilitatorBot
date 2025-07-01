@@ -355,6 +355,13 @@ func (b *Bot) processMessage(message *tgbotapi.Message) {
 		msgText = message.Caption
 	}
 
+	// Проверяем возраст сообщения
+	messageTime := time.Unix(int64(message.Date), 0)
+	if time.Since(messageTime) > 15*time.Minute {
+		log.Printf("[processMessage] Игнорируем старое сообщение от %d в чате %d. Возраст: %v", userID, chatID, time.Since(messageTime))
+		return
+	}
+
 	// Логируем информацию о сообщении
 	log.Printf("[processMessage] Cообщение от %d в чате %d: %q", userID, chatID, msgText)
 

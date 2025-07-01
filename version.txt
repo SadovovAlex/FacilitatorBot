@@ -8,6 +8,7 @@ refactor: improve logging and message formatting
 - Add timing information to AI request logging
 - Fix lint errors in ai.go
 - Update version.txt with logging improvements
+- Add message age check (ignore messages older than 15 minutes)
 
 refactor: update logging and image generation
 

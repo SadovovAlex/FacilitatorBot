@@ -20,7 +20,7 @@ import (
 
 func (b *Bot) GenerateImage(description string, chatID int64, enableDescription bool) (*tgbotapi.PhotoConfig, error) {
 	log.Printf("[GenerateImage] Генерация img для chatID: %d", chatID)
-	//log.Printf("[GenerateImage] Описание: %s", description)
+	log.Printf("[GenerateImage] Описание: %vs", b.truncateText(description, 512))
 
 	// Создаем контекст с таймаутом
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -46,15 +46,14 @@ func (b *Bot) GenerateImage(description string, chatID int64, enableDescription 
 	}
 	defer resp.Body.Close()
 
-	// Логируем статус ответа
-	log.Printf("[GenerateImage] Получен ответ от API. Статус: %s", resp.Status)
-
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[GenerateImage] API вернул ошибку: %s", resp.Status)
 		return nil, fmt.Errorf("API вернул ошибку: %s", resp.Status)
 	}
 
 	// Чтение ответа
+	// Логируем статус ответа
+	log.Printf("[GenerateImage] от API. Статус: %s", resp.Status)
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		elapsed := time.Since(start)
@@ -64,7 +63,7 @@ func (b *Bot) GenerateImage(description string, chatID int64, enableDescription 
 
 	// Логируем успешный ответ
 	elapsed := time.Since(start)
-	log.Printf("[GenerateImage] Успешно получено ответа. Время: %v", elapsed)
+	log.Printf("[GenerateImage] Успешно получен ответ. Время: %v", elapsed)
 
 	// Обработка изображения
 	img, _, err := image.Decode(bytes.NewReader(body))
@@ -125,7 +124,7 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgb
 	// Логируем параметры запроса
 	log.Printf("[generateAiRequest] Начало запроса к AI. ChatID: %d, Model: %s", message.Chat.ID, b.config.AiModelName)
 	log.Printf("[generateAiRequest] System prompt: %s", systemPrompt)
-	log.Printf("[generateAiRequest] User prompt length: %v", b.truncateText(prompt, 128))
+	log.Printf("[generateAiRequest] User prompt[%d]: %v", len(prompt), b.truncateText(prompt, 256))
 
 	request := LocalLLMRequest{
 		Model: b.config.AiModelName,
