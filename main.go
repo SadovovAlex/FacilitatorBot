@@ -35,6 +35,7 @@ type Config struct {
 	AnekdotPrompt        string
 	TopicPrompt          string
 	ReplyPrompt          string
+	ImagePrompt          string
 	HistoryDays          int                // Сколько дней хранить историю
 	DBPath               string             // Путь к файлу SQLite
 	ContextMessageLimit  int                // размер хранения контекста сообщений от пользователя
@@ -195,6 +196,7 @@ func main() {
 		AnekdotPrompt:        "Using these messages, create a short funny joke in Russian, loosely related to discussion. Format as one cohesive text. Don't use usernames:\n%s\nReply in Russian only.",
 		TopicPrompt:          "Using these messages, create a short, funny discussion topic in Russian, loosely related to the previous conversation. Format it as one cohesive text. Add start topic question of disscussion. Do not use usernames:\n%s\nReply in Russian only.",
 		ReplyPrompt:          "Create a short ansver for user question only answer if user ask it. Format it as one cohesive text. Do not use usernames:\n%s\nReply in if user ask Russian and reply another language if user ask.",
+		ImagePrompt:          "A cartoonish black wolf with big eyes and sharp teeth, randomly holding various objects, in a dynamic pose. The wolf looks slightly confused or nervous. Simple gray background with sparse streaks mimicking rain. Stylized as a humorous comic, flat colors, bold outlines. Add footer copyright eng text `(с)wrwfx`. ",
 		TokenCosts: map[string]float64{
 			"deepseek": 0.0001,
 			"openai":   0.001,

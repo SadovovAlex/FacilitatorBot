@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"io"
 	"log"
 	"net/http"
@@ -55,16 +57,43 @@ func (b *Bot) GenerateImage(description string, chatID int64, enableDescription 
 		return nil, fmt.Errorf("ошибка чтения ответа: %v", err)
 	}
 
+	// Обработка изображения
+	img, _, err := image.Decode(bytes.NewReader(body))
+	if err != nil {
+		log.Printf("[GenerateImage] Ошибка декодирования изображения: %v", err)
+		return nil, fmt.Errorf("ошибка декодирования изображения: %v", err)
+	}
+
+	// Получаем размеры изображения
+	bounds := img.Bounds()
+	width := bounds.Max.X
+	height := bounds.Max.Y
+
+	// Обрезаем нижнюю часть на 150 пикселей
+	if height > 60 {
+		height -= 60
+		img = img.(interface {
+			SubImage(r image.Rectangle) image.Image
+		}).SubImage(image.Rect(0, 0, width, height))
+	}
+
+	// Создаем буфер для нового изображения
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, img, nil); err != nil {
+		log.Printf("[GenerateImage] Ошибка кодирования изображения: %v", err)
+		return nil, fmt.Errorf("ошибка кодирования изображения: %v", err)
+	}
+
 	// Создание сообщения с изображением
 	photo := tgbotapi.NewPhoto(chatID, tgbotapi.FileBytes{
 		Name:  "aiimage.jpg",
-		Bytes: body,
+		Bytes: buf.Bytes(),
 	})
 
 	if enableDescription {
 		// Обрезаем caption до максимальной длины Telegram API (128 символа)
-		if len(description) > 128 {
-			description = description[:128] + "..."
+		if len(description) > 1024 {
+			description = description[:1024] + "..."
 		}
 
 		// Проверяем и исправляем UTF-8 кодировку

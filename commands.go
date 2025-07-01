@@ -166,7 +166,7 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 	}
 
 	// Генерируем изображение на основе сводки
-	description := fmt.Sprintf("A cartoonish black wolf with big eyes and sharp teeth, randomly holding various objects, in a dynamic pose. The wolf looks slightly confused or nervous. Simple gray background with sparse streaks mimicking rain. Stylized as a humorous comic, flat colors, bold outlines. Visualize this summary: %s", summary)
+	description := fmt.Sprintf(b.config.ImagePrompt, " Visualize this summary: %s", summary)
 	photo, err := b.GenerateImage(description, chatID, false)
 	if err != nil {
 		// Если не удалось сгенерировать изображение, отправляем текст
@@ -176,6 +176,13 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 		return
 	}
 
+	// Если сводка длинная, отправляем её отдельным сообщением
+	if len(summary) > 1024 {
+		b.sendMessage(chatID, "📝 Сводка обсуждений:\n\n"+summary)
+		photo.Caption = ""
+	} else {
+		photo.Caption = summary
+	}
 	// Отправляем изображение с кратким описанием
 	b.tgBot.Send(photo)
 	b.lastSummary[chatID] = time.Now()
