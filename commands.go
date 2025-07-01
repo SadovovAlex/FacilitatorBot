@@ -177,7 +177,7 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 	b.lastSummary[chatID] = time.Now()
 
 	// Генерируем изображение на основе сводки
-	description := fmt.Sprintf(b.config.ImagePrompt, " Нарисуй картинку показывающую обсуждения: %s", summary)
+	description := fmt.Sprintf(b.config.ImagePrompt, summary)
 	photo, err := b.GenerateImage(description, chatID, false)
 	if err != nil {
 		// Если не удалось сгенерировать изображение, отправляем текст

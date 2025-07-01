@@ -196,7 +196,7 @@ func main() {
 		AnekdotPrompt:        "Using these messages, create a short funny joke in Russian, loosely related to discussion. Format as one cohesive text. Don't use usernames:\n%s\nReply in Russian only.",
 		TopicPrompt:          "Using these messages, create a short, funny discussion topic in Russian, loosely related to the previous conversation. Format it as one cohesive text. Add start topic question of disscussion. Do not use usernames:\n%s\nReply in Russian only.",
 		ReplyPrompt:          "Create a short ansver for user question only answer if user ask it. Format it as one cohesive text. Do not use usernames:\n%s\nReply in if user ask Russian and reply another language if user ask.",
-		ImagePrompt:          "ты иллюстратор рисующий A cartoonish black wolf with big, expressive eyes and sharp teeth, dynamically posing while holding random objects (e.g., a coffee cup, umbrella, or sandwich). The wolf looks slightly confused or nervous. Simple gray background with subtle rain streaks. Stylized as a humorous comic—flat colors, bold outlines, exaggerated expressions. Footer: small copyright text (с)wrwfx in English. Add top right copyright eng text `(с)wrwfx`. ",
+		ImagePrompt:          "Ты иллюстратор рисующий A cartoonish атипичный black wolf with big, expressive eyes and sharp teeth, dynamically posing while holding random objects (e.g., a coffee cup, umbrella, or sandwich). The wolf looks slightly confused or nervous. Simple gray background with subtle rain streaks. Stylized as a humorous comic—flat colors, bold outlines, exaggerated expressions. Footer: small copyright text (с)wrwfx in English. Add top right copyright eng text `(с)wrwfx`. ",
 		TokenCosts: map[string]float64{
 			"deepseek": 0.0001,
 			"openai":   0.001,
