@@ -10,11 +10,17 @@ refactor: улучшаем логирование и процесс сборки
 - Исправлена обрезка описаний в handleSummary
 - Удален неиспользуемый файл zzz.cmd
 - Обновлен version.txt со всеми изменениями
-fix: improve image generation prompt formatting
 
+fix: improve image generation prompt formatting
 - Replace fmt.Sprintf with string concatenation in handleAISummary
 - Fix log format in GenerateImage to properly display description
 - Remove redundant debug log in GenerateImage
+
+feat: добавляем случайные заголовки для сводок
+- Добавлен массив различных заголовков для сводок
+- Добавлена функция getRandomSummaryTitle для выбора случайного заголовка
+- Обновлен handleAISummary для использования случайных заголовков
+- Улучшена типографика заголовков с использованием Markdown форматирования
 
 02.07.2025
 refactor: улучшаем логирование и форматирование сообщений

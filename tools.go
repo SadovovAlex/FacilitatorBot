@@ -3,11 +3,32 @@ package main
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"strings"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
+
+// В начале файла (или в структуре бота) добавляем массив заголовков
+var summaryTitles = []string{
+	"📝 **Сводка обсуждений**",
+	"🔍📌 *Итоги дискуссии*\n────────────",
+	"❓ *Что обсуждали?*",
+	"📰 *Последние обсуждения*",
+	"📌 *Кратко:*",
+	"💡 *Мысли и идеи*",
+	"🤔 *Рефлексия дискуссии*",
+	"🎤 *Что тут наговорили?*",
+	"⚙️ *Технические итоги*",
+	fmt.Sprintf("⏱ *Обсуждение на %s*", time.Now().Format("15:04")),
+}
+
+// Функция для получения случайного заголовка
+func getRandomSummaryTitle() string {
+	rand.Seed(time.Now().UnixNano())
+	return summaryTitles[rand.Intn(len(summaryTitles))]
+}
 
 // Вспомогательная функция для расчета стоимости
 func calculateCost(model string, tokens int) float64 {
@@ -259,4 +280,32 @@ func getMessageType(msg *tgbotapi.Message) string {
 	default:
 		return "сообщение"
 	}
+}
+
+// startChatTyping запускает индикатор печати в чате
+func (b *Bot) startChatTyping(chatID int64) {
+	// Отправляем индикатор печати сразу при запуске
+	chatAction := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	if _, err := b.tgBot.Request(chatAction); err != nil {
+		log.Printf("[startChatTyping] Ошибка отправки индикатора печати: %v", err)
+		return
+	}
+
+	stopTyping := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				chatAction := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+				if _, err := b.tgBot.Request(chatAction); err != nil {
+					log.Printf("[startChatTyping] Ошибка отправки индикатора печати: %v", err)
+				}
+			case <-stopTyping:
+				return
+			}
+		}
+	}()
+	defer close(stopTyping)
 }

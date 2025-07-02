@@ -88,23 +88,7 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 	chatID := message.Chat.ID
 
 	// Запускаем горутину для периодической отправки индикатора печати
-	stopTyping := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				chatAction := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
-				if _, err := b.tgBot.Request(chatAction); err != nil {
-					log.Printf("[GenerateImage] Ошибка отправки индикатора печати: %v", err)
-				}
-			case <-stopTyping:
-				return
-			}
-		}
-	}()
-	defer close(stopTyping)
+	b.startChatTyping(chatID)
 
 	// Проверка разрешен ли чат
 	if !b.isChatAllowed(chatID) {
@@ -173,7 +157,7 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 		return
 	}
 
-	b.sendMessage(chatID, "📝 Сводка обсуждений:\n\n"+summary)
+	b.sendMessage(chatID, getRandomSummaryTitle()+"\n"+summary)
 	b.lastSummary[chatID] = time.Now()
 
 	// Генерируем изображение на основе сводки
@@ -232,29 +216,8 @@ func (b *Bot) handleGenImage(message *tgbotapi.Message) {
 		return
 	}
 
-	// Отправляем индикатор печати
-	if _, err := b.tgBot.Request(tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)); err != nil {
-		log.Printf("[handleGenImage] Ошибка отправки индикатора печати: %v", err)
-	}
-
-	// Запускаем горутину для периодической отправки индикатора печати
-	stopTyping := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				chatAction := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
-				if _, err := b.tgBot.Request(chatAction); err != nil {
-					log.Printf("[handleGenImage] Ошибка отправки индикатора печати: %v", err)
-				}
-			case <-stopTyping:
-				return
-			}
-		}
-	}()
-	defer close(stopTyping)
+	//Запускаем горутину для периодической отправки индикатора печати
+	b.startChatTyping(chatID)
 
 	// Получаем описание из текста сообщения после команды
 	description := strings.TrimSpace(message.CommandArguments())
