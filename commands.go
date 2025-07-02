@@ -161,7 +161,8 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 	b.lastSummary[chatID] = time.Now()
 
 	// Генерируем изображение на основе сводки
-	description := b.config.ImagePrompt + "\n" + summary
+	//description := b.config.ImagePrompt + "\n" + summary
+	description := summary
 
 	photo, err := b.GenerateImage(description, chatID, false)
 	if err != nil {
