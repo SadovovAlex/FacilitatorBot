@@ -1,4 +1,4 @@
-03.06.2025
+03.07.2025
 refactor: улучшаем логирование и процесс сборки
 
 - Добавлено проверка возраста сообщений (игнорируем старше 15 минут)
@@ -10,8 +10,13 @@ refactor: улучшаем логирование и процесс сборки
 - Исправлена обрезка описаний в handleSummary
 - Удален неиспользуемый файл zzz.cmd
 - Обновлен version.txt со всеми изменениями
+fix: improve image generation prompt formatting
 
-02.06.2025
+- Replace fmt.Sprintf with string concatenation in handleAISummary
+- Fix log format in GenerateImage to properly display description
+- Remove redundant debug log in GenerateImage
+
+02.07.2025
 refactor: улучшаем логирование и форматирование сообщений
 
 - Исправлено форматирование messagesText в handleAISummary

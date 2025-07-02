@@ -19,15 +19,14 @@ import (
 )
 
 func (b *Bot) GenerateImage(description string, chatID int64, enableDescription bool) (*tgbotapi.PhotoConfig, error) {
-	log.Printf("[GenerateImage] Генерация img для chatID: %d", chatID)
-	log.Printf("[GenerateImage] Описание: %vs", b.truncateText(description, 512))
+	log.Printf("[GenerateImage] Генерация img для chatID: %d Описание: %v", chatID, description)
 
 	// Создаем контекст с таймаутом
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	// Подготовка URL для запроса
-	url := b.config.AIImageURL + url.QueryEscape(description)
+	url := fmt.Sprintf("%s%s", b.config.AIImageURL, url.QueryEscape(description))
 	log.Printf("[GenerateImage] URL запроса: %s", url)
 
 	// Выполнение HTTP GET запроса с таймаутом
