@@ -1,0 +1,72 @@
+- hosts: all
+  vars:
+    ansible_python_interpreter: /usr/bin/python3.12
+  tasks:
+    - name: Clone or update bot repository
+      git:
+        repo: https://github.com/SadovovAlex/FacilitatorBot.git
+        dest: /opt/FacilitatorBot/repo
+        force: yes
+      register: repo_update
+
+    - name: Set build_needed fact
+      set_fact:
+        build_needed: "{{ repo_update.changed }}"
+
+    - name: Build bot (only if repository changed)
+      command: go build -o /opt/FacilitatorBot/facilitator-bot
+      args:
+        chdir: /opt/FacilitatorBot/repo
+      register: build_result
+      when: build_needed
+      ignore_errors: yes
+
+    - name: Set build_successful fact
+      set_fact:
+        build_successful: "{{ build_result is defined and build_result.rc == 0 }}"
+      when: build_needed
+
+    - name: Create bot directory structure
+      file:
+        path: "{{ item }}"
+        state: directory
+      with_items:
+        - /opt/FacilitatorBot/logs
+
+    - name: Create systemd service file
+      copy:
+        dest: /etc/systemd/system/facilitator-bot.service
+        content: |
+          [Unit]
+          Description=Facilitator Bot Service
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=your_user  # Замените на пользователя, под которым будет запускаться бот
+          WorkingDirectory=/opt/FacilitatorBot
+          ExecStart=/opt/FacilitatorBot/facilitator-bot
+          Restart=on-failure
+          StandardOutput=append:/opt/FacilitatorBot/logs/output.log
+          StandardError=append:/opt/FacilitatorBot/logs/error.log
+          PIDFile=/var/run/facilitator-bot.pid
+
+          [Install]
+          WantedBy=multi-user.target
+      mode: '0644'
+
+    - name: Reload systemd to recognize new service
+      command: systemctl daemon-reload
+
+    - name: Enable service (always)
+      command: systemctl enable facilitator-bot
+
+    - name: Restart service (only if needed)
+      command: systemctl restart facilitator-bot
+      when: 
+        - build_needed and build_successful
+
+    - name: Start service (if not running)
+      command: systemctl start facilitator-bot
+      when: 
+        - not build_needed
