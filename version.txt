@@ -1,59 +1,68 @@
+03.06.2025
+refactor: улучшаем логирование и процесс сборки
+
+- Добавлено проверка возраста сообщений (игнорируем старше 15 минут)
+- Улучшено логирование в GenerateImage с обрезкой описаний
+- Обновлен формат промпта для изображений
+- Улучшена сборка с лучшей обработкой ошибок и логированием
+- Удалены избыточные логи
+- Добавлено отслеживание длины сообщений в generateAiRequest
+- Исправлена обрезка описаний в handleSummary
+- Удален неиспользуемый файл zzz.cmd
+- Обновлен version.txt со всеми изменениями
+
 02.06.2025
-refactor: improve logging and message formatting
+refactor: улучшаем логирование и форматирование сообщений
 
-- Fix messagesText formatting in handleAISummary
-- Add proper message content to messagesText.Builder
-- Comment out redundant logging in message loop
-- Improve error handling in generateAiRequest
-- Add timing information to AI request logging
-- Fix lint errors in ai.go
-- Update version.txt with logging improvements
-- Add message age check (ignore messages older than 15 minutes)
+- Исправлено форматирование messagesText в handleAISummary
+- Добавлено правильное содержимое сообщений в messagesText.Builder
+- Закомментированы избыточные логи в цикле сообщений
+- Улучшена обработка ошибок в generateAiRequest
+- Добавлена информация о времени в логах запросов AI
+- Исправлены ошибки линта в ai.go
+- Обновлен version.txt с улучшениями логирования
+- Добавлена проверка возраста сообщений (игнорируем старше 15 минут)
 
-refactor: update logging and image generation
+refactor: обновляем логирование и генерацию изображений
 
-- Replace fmt.Println with log.Printf for consistent logging
-- Update image generation prompts for better clarity
-- Improve error messages for image generation
-- Add username to admin logging
-- Comment out unused functions in tools.go
-- Create new stats.go file
-- Update AI prompts for better image generation
-- Improve summary generation messages
-- Fix chat action logging prefix
-- Add proper error handling for image generation
-- Add detailed logging for AI requests with timing information
+- Заменяем fmt.Println на log.Printf для единообразного логирования
+- Обновляем промпты для генерации изображений для лучшей ясности
+- Улучшаем сообщения об ошибках при генерации изображений
+- Добавляем username в логи администраторов
+- Закомментированы неиспользуемые функции в tools.go
+- Создан новый файл stats.go
+- Обновлены промпты AI для лучшей генерации изображений
+- Улучшено форматирование сводок обсуждений
+- Исправлен префикс логирования действий чата
+- Добавлена правильная обработка ошибок для генерации изображений
+- Добавлена детальная логика для запросов AI с информацией о времени
 
 01.06.2025
-refactor: improve logging and image generation
-
-- Add detailed debug logging for message processing
-- Update build script with UTF-8 encoding and better output
-- Modify GenerateImage to conditionally show descriptions
-- Add new allowed group to .env
-- Optimize image generation with fixed prompt
-- Improve error handling and logging in commands
+refactor: улучшение логирования и генерации изображений
+- Добавлено детальное отладочное логирование для обработки сообщений
+- Обновлен скрипт сборки с кодировкой UTF-8 и лучшим выводом
+- Изменена GenerateImage для условного отображения описаний
+- Добавлена новая разрешенная группа в .env
+- Оптимизирована генерация изображений с фиксированным промптом
+- Улучшена обработка ошибок и логирование в командах
 
 30.06.2025
-feat: add image generation command
-
-- Added /img command for generating images
-- Added admin checks for image generation
-- Added typing indicators during image generation
-- Increased API timeout to 60 seconds
-- Added detailed logging for image generation process
-- Improved error handling and user feedback
+feat: добавление команды генерации изображений
+- Добавлена команда /img для генерации изображений
+- Добавлена проверка прав администратора для генерации изображений
+- Добавлены индикаторы набора текста при генерации изображения
+- Увеличен таймаут API до 60 секунд
+- Добавлено детальное логирование процесса генерации изображений
+- Улучшена обработка ошибок и обратная связь для пользователя
 
 26.06.2025
-refactor: combine admin checks and add build number tracking
-
+refactor: объединение проверок администратора и добавление отслеживания номера сборки
 - Add IsUserAdmin function to check admin status in both Telegram and DB
 - Remove duplicate IsUserAdminInDB function from admin.go
 - Add build number tracking in version.go
 - Update handleAIStats to use new IsUserAdmin function
 
 feat: implement database integration for chat messages and user data
-
 - Add database initialization with migrations
 - Implement chat message storage and retrieval
 - Add user data management
@@ -62,11 +71,10 @@ feat: implement database integration for chat messages and user data
 - Add message cleanup functionality
 
 feat: add version and build date tracking
-
 - Add version.go with version constant
 - Add build scripts for Windows and Linux
-- Update startup logging to show version and build date
-- Add version info to startup notification message
-- Improve build process with automatic date stamping
+- Обновлен лог при запуске для отображения версии и даты сборки
+- Добавлена информация о версии в уведомление при запуске
+- Улучшена сборка с автоматическим добавлением временной метки
 
 The bot now shows its version and build date both in logs and startup notifications.

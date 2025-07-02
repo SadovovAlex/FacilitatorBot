@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+
+name="FacilitatorBot"
+description="Facilitator Bot Service"
+
+command="/opt/FacilitatorBot/facilitator-bot"
+command_args=""
+pidfile="/var/run/facilitator-bot.pid"
+command_background=true
+
+# Рабочая директория (чтобы бот мог использовать относительные пути)
+directory="/opt/FacilitatorBot"
+
+output_log="/opt/FacilitatorBot/logs/output.log"
+error_log="/opt/FacilitatorBot/logs/error.log"
+
+depend() {
+    need net
+}

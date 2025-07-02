@@ -1,17 +1,30 @@
 - hosts: all
+  vars:
+    ansible_python_interpreter: /usr/bin/python3.12
   tasks:
-
-    - name: Clone bot repository
+    - name: Clone or update bot repository
       git:
         repo: https://github.com/SadovovAlex/FacilitatorBot.git
         dest: /opt/FacilitatorBot/repo
         force: yes
+      register: repo_update
 
-    - name: Build bot
+    - name: Set build_needed fact
+      set_fact:
+        build_needed: "{{ repo_update.changed }}"
+
+    - name: Build bot (only if repository changed)
       command: go build -o /opt/FacilitatorBot/facilitator-bot
       args:
         chdir: /opt/FacilitatorBot/repo
       register: build_result
+      when: build_needed
+      ignore_errors: yes
+
+    - name: Set build_successful fact
+      set_fact:
+        build_successful: "{{ build_result is defined and build_result.rc == 0 }}"
+      when: build_needed
 
     - name: Create bot directory structure
       file:
@@ -19,26 +32,39 @@
         state: directory
       with_items:
         - /opt/FacilitatorBot/logs
-      when: build_result.rc == 0
 
     - name: Create OpenRC service file
       template:
         src: facilitator-bot.openrc.j2
         dest: /etc/init.d/facilitator-bot
         mode: '0755'
-      when: build_result.rc == 0
 
-    - name: Enable and start facilitator-bot service
-      command: "{{ item }}"
-      with_items:
-        - rc-update add facilitator-bot default
-        - rc-service facilitator-bot start
-      register: service_status
-      when: build_result.rc == 0
+    - name: Check if service needs to be restarted
+      set_fact:
+        service_needs_restart: "{{ build_needed and build_successful }}"
+      when: build_needed is defined
+
+    - name: Enable service (always)
+      command: rc-update add facilitator-bot default
+      when: not ansible_check_mode
+
+    - name: Restart service (only if needed)
+      command: rc-service facilitator-bot restart
+      when: 
+        - service_needs_restart | default(false)
+        - not ansible_check_mode
+      register: service_restart
+
+    - name: Start service (if not running and not restarted)
+      command: rc-service facilitator-bot start
+      when: 
+        - not service_restart.changed | default(false)
+        - not ansible_check_mode
+      register: service_start
 
     - name: Check bot logs
       command: tail -n 10 /opt/FacilitatorBot/logs/telegram_bot.log
       register: bot_logs
-      when: service_status.changed and not ansible_check_mode
-
-    
+      when: 
+        - (service_restart.changed or service_start.changed)
+        - not ansible_check_mode
