@@ -14,7 +14,7 @@ import (
 // CommandHandler обрабатывает команды бота
 func (b *Bot) handleCommand(message *tgbotapi.Message) {
 	if !b.isChatAllowed(message.Chat.ID) {
-		b.sendMessage(message.Chat.ID, "Извините, я не работаю в этом чате.")
+		b.sendMessage(message.Chat.ID, fmt.Sprintf("Извините, я не работаю в этом чате. %v", message.Chat.ID))
 		return
 	}
 
