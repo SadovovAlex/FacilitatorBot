@@ -89,7 +89,6 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 
 	// Запускаем горутину для периодической отправки индикатора печати
 	stopTyping := b.startChatTyping(chatID)
-	// Останавливаем индикатор печати после завершения всех операций
 	defer close(stopTyping)
 
 	// Проверка разрешен ли чат
@@ -219,8 +218,9 @@ func (b *Bot) handleGenImage(message *tgbotapi.Message) {
 		return
 	}
 
-	//Запускаем горутину для периодической отправки индикатора печати
-	b.startChatTyping(chatID)
+	// Запускаем горутину для периодической отправки индикатора печати
+	stopTyping := b.startChatTyping(chatID)
+	defer close(stopTyping)
 
 	// Получаем описание из текста сообщения после команды
 	description := strings.TrimSpace(message.CommandArguments())
