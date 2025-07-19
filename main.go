@@ -537,7 +537,12 @@ func (b *Bot) isChatAllowed(chatID int64) bool {
 
 // handleReplyToBot обрабатывает ответы на сообщения бота
 func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
+	chatID := message.Chat.ID
 	log.Printf("Пользователь %d обратился: %s", message.From.ID, message.Text)
+
+	// Запускаем горутину для периодической отправки индикатора печати
+	stopTyping := b.startChatTyping(chatID)
+	defer close(stopTyping)
 
 	// Получаем системный промпт пользователя
 	aiInfo, err := b.GetUserAIInfo(message.From.ID)

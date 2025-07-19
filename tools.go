@@ -286,6 +286,7 @@ func getMessageType(msg *tgbotapi.Message) string {
 func (b *Bot) startChatTyping(chatID int64) chan struct{} {
 	// Отправляем индикатор печати сразу при запуске
 	chatAction := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	log.Printf("[startChatTyping] Отправка индикатора печати.")
 	if _, err := b.tgBot.Request(chatAction); err != nil {
 		log.Printf("[startChatTyping] Ошибка отправки индикатора печати: %v", err)
 		return nil
