@@ -88,7 +88,9 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 	chatID := message.Chat.ID
 
 	// Запускаем горутину для периодической отправки индикатора печати
-	b.startChatTyping(chatID)
+	stopTyping := b.startChatTyping(chatID)
+	// Останавливаем индикатор печати после завершения всех операций
+	defer close(stopTyping)
 
 	// Проверка разрешен ли чат
 	if !b.isChatAllowed(chatID) {
@@ -238,7 +240,8 @@ func (b *Bot) handleGenImage(message *tgbotapi.Message) {
 	// log.Println("[handleGenImage]" + promptImg)
 
 	// Генерируем изображение
-	photo, err := b.GenerateImage(b.config.ImagePrompt, chatID, false)
+	//photo, err := b.GenerateImage(b.config.ImagePrompt, chatID, false)
+	photo, err := b.GenerateImage(description, chatID, false)
 	if err != nil {
 		log.Printf("Ошибка генерации изображения: %v", err)
 		b.sendMessage(chatID, "Не удалось сгенерировать изображение. Попробуйте позднее.")

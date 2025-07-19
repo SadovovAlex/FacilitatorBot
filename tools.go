@@ -283,12 +283,12 @@ func getMessageType(msg *tgbotapi.Message) string {
 }
 
 // startChatTyping запускает индикатор печати в чате
-func (b *Bot) startChatTyping(chatID int64) {
+func (b *Bot) startChatTyping(chatID int64) chan struct{} {
 	// Отправляем индикатор печати сразу при запуске
 	chatAction := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
 	if _, err := b.tgBot.Request(chatAction); err != nil {
 		log.Printf("[startChatTyping] Ошибка отправки индикатора печати: %v", err)
-		return
+		return nil
 	}
 
 	stopTyping := make(chan struct{})
@@ -307,5 +307,5 @@ func (b *Bot) startChatTyping(chatID int64) {
 			}
 		}
 	}()
-	defer close(stopTyping)
+	return stopTyping // Возвращаем канал для остановки
 }
