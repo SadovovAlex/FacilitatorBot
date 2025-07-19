@@ -146,52 +146,79 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgb
 		return "", fmt.Errorf("ошибка маршалинга запроса: %v", err)
 	}
 
-	// Логируем отправку запроса
-	log.Printf("[generateAiRequest] Отправка запроса к %s", b.config.LocalLLMUrl)
+	// Retry logic with exponential backoff
+	const maxRetries = 3
+	baseDelay := 15000 * time.Millisecond
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Логируем отправку запроса
+		log.Printf("[generateAiRequest] Попытка %d/%d. Отправка запроса к %s", attempt+1, maxRetries, b.config.LocalLLMUrl)
 
-	resp, err := b.httpClient.Post(b.config.LocalLLMUrl, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("ошибка HTTP запроса: %v", err)
-	}
-	defer resp.Body.Close()
+		resp, err := b.httpClient.Post(b.config.LocalLLMUrl, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			log.Printf("[generateAiRequest] Ошибка HTTP запроса (попытка %d): %v", attempt+1, err)
+			if attempt == maxRetries-1 {
+				return "", fmt.Errorf("ошибка HTTP запроса после %d попыток: %v", maxRetries, err)
+			}
+			time.Sleep(baseDelay * time.Duration(2<<uint(attempt)))
+			continue
+		}
+		defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("неверный статус код: %d", resp.StatusCode)
-	}
-
-	var response LocalLLMResponse
-	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return "", fmt.Errorf("ошибка декодирования ответа: %v", err)
-	}
-
-	log.Printf("Resp: %v", response)
-
-	if len(response.Choices) == 0 {
-		return "", fmt.Errorf("пустой ответ от LLM")
-	}
-
-	summary := response.Choices[0].Message.Content
-	if idx := strings.Index(summary, "--"); idx != -1 {
-		summary = summary[:idx]
-	}
-
-	// // После получения ответа от AI сохраняем информацию о токенах
-	if response.Usage.TotalTokens > 0 {
-		record := BillingRecord{
-			UserID:           message.From.ID,
-			ChatID:           message.Chat.ID,
-			Timestamp:        time.Now().Unix(),
-			Model:            response.Model,
-			PromptTokens:     response.Usage.PromptTokens,
-			CompletionTokens: response.Usage.CompletionTokens,
-			TotalTokens:      response.Usage.TotalTokens,
-			Cost:             calculateCost(response.Model, response.Usage.TotalTokens),
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("[generateAiRequest] Неверный статус код (попытка %d): %d", attempt+1, resp.StatusCode)
+			if attempt == maxRetries-1 {
+				return "", fmt.Errorf("неверный статус код после %d попыток: %d", maxRetries, resp.StatusCode)
+			}
+			time.Sleep(baseDelay * time.Duration(2<<uint(attempt)))
+			continue
 		}
 
-		if err := b.SaveBillingRecord(record); err != nil {
-			log.Printf("Ошибка биллинга: %v", err)
+		var response LocalLLMResponse
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			log.Printf("[generateAiRequest] Ошибка декодирования ответа (попытка %d): %v", attempt+1, err)
+			if attempt == maxRetries-1 {
+				return "", fmt.Errorf("ошибка декодирования ответа после %d попыток: %v", maxRetries, err)
+			}
+			time.Sleep(baseDelay * time.Duration(2<<uint(attempt)))
+			continue
 		}
+
+		if len(response.Choices) == 0 {
+			log.Printf("[generateAiRequest] Пустой ответ от LLM (попытка %d)", attempt+1)
+			if attempt == maxRetries-1 {
+				return "", fmt.Errorf("пустой ответ от LLM после %d попыток", maxRetries)
+			}
+			time.Sleep(baseDelay * time.Duration(2<<uint(attempt)))
+			continue
+		}
+
+		// Успешный ответ
+		log.Printf("[generateAiRequest] Успешный ответ получен (попытка %d)", attempt+1)
+		summary := response.Choices[0].Message.Content
+		if idx := strings.Index(summary, "--"); idx != -1 {
+			summary = summary[:idx]
+		}
+
+		// // После получения ответа от AI сохраняем информацию о токенах
+		if response.Usage.TotalTokens > 0 {
+			record := BillingRecord{
+				UserID:           message.From.ID,
+				ChatID:           message.Chat.ID,
+				Timestamp:        time.Now().Unix(),
+				Model:            response.Model,
+				PromptTokens:     response.Usage.PromptTokens,
+				CompletionTokens: response.Usage.CompletionTokens,
+				TotalTokens:      response.Usage.TotalTokens,
+				Cost:             calculateCost(response.Model, response.Usage.TotalTokens),
+			}
+
+			if err := b.SaveBillingRecord(record); err != nil {
+				log.Printf("Ошибка биллинга: %v", err)
+			}
+		}
+
+		return strings.TrimSpace(summary), nil
 	}
 
-	return strings.TrimSpace(summary), nil
+	return "", fmt.Errorf("все %d попытки завершились неудачей", maxRetries)
 }
