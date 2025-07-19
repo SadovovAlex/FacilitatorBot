@@ -148,7 +148,7 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgb
 
 	// Retry logic with exponential backoff
 	const maxRetries = 3
-	baseDelay := 15000 * time.Millisecond
+	baseDelay := 60000 * time.Millisecond
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		// Логируем отправку запроса
 		log.Printf("[generateAiRequest] Попытка %d/%d. Отправка запроса к %s", attempt+1, maxRetries, b.config.LocalLLMUrl)
