@@ -195,7 +195,7 @@ func (b *Bot) handleUnknownCommand(message *tgbotapi.Message) {
 	}
 
 	// Инициализируем рандомайзер с текущим временем
-	rand.Seed(time.Now().UnixNano())
+	//rand.Seed(time.Now().UnixNano())
 
 	// Выбираем случайный ответ
 	response := responses[rand.Intn(len(responses))]

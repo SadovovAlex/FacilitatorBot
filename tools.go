@@ -178,12 +178,13 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 
 	// Определяем, кому адресовано спасибо
 	var thankedUserID int64 = 0
-	var thankedUsername string
+	var thankedUsername, thankedName string
 
 	// Если это ответ на сообщение
 	if message.ReplyToMessage != nil {
 		thankedUserID = message.ReplyToMessage.From.ID
 		thankedUsername = message.ReplyToMessage.From.UserName
+		thankedName = message.ReplyToMessage.From.FirstName
 	} else {
 		// Попробуем найти упоминание @username в тексте
 		if message.Entities != nil {
@@ -219,7 +220,12 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 	response.ReplyToMessageID = message.MessageID
 
 	// Добавляем текст
-	thanksText := fmt.Sprintf("🔥 %s, благодарность улетает @%s !\n", message.From.FirstName, thankedUsername)
+	thanksText := ""
+	if thankedUserID != 0 {
+		thanksText = fmt.Sprintf("🔥 %s, благодарность улетает %s (@%s) !\n", message.From.FirstName, thankedName, thankedUsername)
+	} else {
+		thanksText = fmt.Sprintf("🔥 %s, благодарность улетает в космос! Вероятно какому то пользователю, но ты не ответил на сообщение пользователя словом `спасибо`.\n", message.From.FirstName)
+	}
 
 	// Добавляем статистику
 	var stats strings.Builder
@@ -240,7 +246,7 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 			thankedUserID, message.Chat.ID).Scan(&thankedCount)
 		if err == nil {
 			if thankedUsername != "" {
-				fmt.Fprintf(&stats, "Всего поблагодарили @%s %d раз(а)\n", thankedUsername, thankedCount)
+				fmt.Fprintf(&stats, "Всего поблагодарили %s (@%s) %d раз(а)\n", thankedName, thankedUsername, thankedCount)
 			} else {
 				fmt.Fprintf(&stats, "Всего поблагодарили этого пользователя %d раз(а)\n", thankedCount)
 			}

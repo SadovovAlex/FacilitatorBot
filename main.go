@@ -629,7 +629,7 @@ func (b *Bot) handleStats(message *tgbotapi.Message) {
 
 	// 2. Статистика по благодарностям
 	var totalThanks int
-	err = b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE chat_id = ?", chatID).Scan(&totalThanks)
+	err := b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE chat_id = ?", chatID).Scan(&totalThanks)
 	if err == nil {
 		fmt.Fprintf(&statsMsg, "🙏 Всего благодарностей: %d\n\n", totalThanks)
 	}
