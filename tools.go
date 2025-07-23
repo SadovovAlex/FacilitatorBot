@@ -219,7 +219,7 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 	response.ReplyToMessageID = message.MessageID
 
 	// Добавляем текст
-	thanksText := fmt.Sprintf("🔥 %s, ты красавчик держи благодарность!\n", message.From.FirstName)
+	thanksText := fmt.Sprintf("🔥 %s, благодарность улетает @%s !\n", message.From.FirstName, thankedUsername)
 
 	// Добавляем статистику
 	var stats strings.Builder
