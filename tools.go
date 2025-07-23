@@ -135,7 +135,30 @@ func (b *Bot) truncateText(text string, maxLength int) string {
 	return text
 }
 
-// checkForThanks проверяет сообщение на наличие слов благодарности и сохраняет в БД// checkForThanks проверяет сообщение на наличие слов благодарности
+// sendMessage отправляет сообщение в чат
+func (b *Bot) sendMessage(chatID int64, text string) {
+	msg := tgbotapi.NewMessage(chatID, text)
+	_, err := b.tgBot.Send(msg)
+	if err != nil {
+		log.Printf("Ошибка отправки сообщения: %v", err)
+	}
+}
+
+// isChatAllowed проверяет разрешен ли чат
+func (b *Bot) isChatAllowed(chatID int64) bool {
+	if len(b.config.AllowedGroups) == 0 {
+		return true
+	}
+
+	for _, id := range b.config.AllowedGroups {
+		if id == chatID {
+			return true
+		}
+	}
+	return false
+}
+
+// checkForThanks проверяет сообщение на наличие слов благодарности и сохраняет в БД
 func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 	text := message.Text
 	if text == "" && message.Caption != "" {
@@ -155,10 +178,12 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 
 	// Определяем, кому адресовано спасибо
 	var thankedUserID int64 = 0
+	var thankedUsername string
 
 	// Если это ответ на сообщение
 	if message.ReplyToMessage != nil {
 		thankedUserID = message.ReplyToMessage.From.ID
+		thankedUsername = message.ReplyToMessage.From.UserName
 	} else {
 		// Попробуем найти упоминание @username в тексте
 		if message.Entities != nil {
@@ -169,6 +194,7 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 					user, err := b.getUserByUsername(username[1:]) // Убираем @
 					if err == nil && user != nil {
 						thankedUserID = user.ID
+						thankedUsername = user.UserName
 					}
 				}
 			}
@@ -187,6 +213,74 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 	if err != nil {
 		log.Printf("Ошибка сохранения благодарности: %v", err)
 	}
+	//
+	// Формируем ответное сообщение
+	response := tgbotapi.NewMessage(message.Chat.ID, "")
+	response.ReplyToMessageID = message.MessageID
+
+	// Добавляем текст
+	thanksText := fmt.Sprintf("🔥 %s, ты красавчик держи благодарность!\n", message.From.FirstName)
+
+	// Добавляем статистику
+	var stats strings.Builder
+	stats.WriteString("\n📊 Статистика благодарностей:\n")
+
+	// 1. Общее количество благодарностей отправителя
+	var userThanksCount int
+	err = b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE from_user_id = ? AND chat_id = ?",
+		message.From.ID, message.Chat.ID).Scan(&userThanksCount)
+	if err == nil {
+		fmt.Fprintf(&stats, "Ты сказал спасибо %d раз(а)\n", userThanksCount)
+	}
+
+	// Если благодарили конкретного пользователя, показываем его статистику и место в топе
+	if thankedUserID != 0 {
+		var thankedCount int
+		err = b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE to_user_id = ? AND chat_id = ?",
+			thankedUserID, message.Chat.ID).Scan(&thankedCount)
+		if err == nil {
+			if thankedUsername != "" {
+				fmt.Fprintf(&stats, "Всего поблагодарили @%s %d раз(а)\n", thankedUsername, thankedCount)
+			} else {
+				fmt.Fprintf(&stats, "Всего поблагодарили этого пользователя %d раз(а)\n", thankedCount)
+			}
+
+			// Получаем место в топе получателей благодарностей
+			var rank int
+			err = b.db.QueryRow(`
+			SELECT position FROM (
+				SELECT 
+					to_user_id, 
+					RANK() OVER (ORDER BY COUNT(*) DESC) as position
+				FROM thanks 
+				WHERE chat_id = ?
+				GROUP BY to_user_id
+			) ranked WHERE to_user_id = ?`,
+				message.Chat.ID, thankedUserID).Scan(&rank)
+
+			if err == nil {
+				if rank <= 5 {
+					fmt.Fprintf(&stats, "🏆 Место в топе получателей: %d\n", rank)
+				} else {
+					fmt.Fprintf(&stats, "🏆 В топ-5 не входит (место: %d)\n", rank)
+				}
+			}
+		}
+	}
+
+	thanksText += stats.String()
+	response.Text = thanksText
+	response.ChatID = message.Chat.ID
+
+	// // Добавляем стикер (можно использовать ID стикера или отправить картинку)
+	// sticker := tgbotapi.NewSticker(message.Chat.ID, tgbotapi.FileID("CAACAgIAAxkBAAIB..." /* замените на реальный ID стикера */))
+	// b.sendSticker(sticker)
+
+	// // Отправляем текстовое сообщение
+	//b.sendMessage(message.Chat.ID , response)
+	b.tgBot.Send(response)
+	//
+
 }
 
 // Вспомогательная функция для получения названия чата

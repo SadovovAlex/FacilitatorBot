@@ -512,29 +512,6 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 	b.checkForThanks(message)
 }
 
-// sendMessage отправляет сообщение в чат
-func (b *Bot) sendMessage(chatID int64, text string) {
-	msg := tgbotapi.NewMessage(chatID, text)
-	_, err := b.tgBot.Send(msg)
-	if err != nil {
-		log.Printf("Ошибка отправки сообщения: %v", err)
-	}
-}
-
-// isChatAllowed проверяет разрешен ли чат
-func (b *Bot) isChatAllowed(chatID int64) bool {
-	if len(b.config.AllowedGroups) == 0 {
-		return true
-	}
-
-	for _, id := range b.config.AllowedGroups {
-		if id == chatID {
-			return true
-		}
-	}
-	return false
-}
-
 // handleReplyToBot обрабатывает ответы на сообщения бота
 func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
 	chatID := message.Chat.ID
