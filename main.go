@@ -620,12 +620,12 @@ func (b *Bot) handleStats(message *tgbotapi.Message) {
 	var statsMsg strings.Builder
 	fmt.Fprintf(&statsMsg, "📊 Статистика чата:\n\n")
 
-	// 1. Общая статистика по сообщениям
-	var totalMessages int
-	err := b.db.QueryRow("SELECT COUNT(*) FROM messages WHERE chat_id = ?", chatID).Scan(&totalMessages)
-	if err == nil {
-		fmt.Fprintf(&statsMsg, "📨 Всего сообщений: %d\n", totalMessages)
-	}
+	// // 1. Общая статистика по сообщениям
+	// var totalMessages int
+	// err := b.db.QueryRow("SELECT COUNT(*) FROM messages WHERE chat_id = ?", chatID).Scan(&totalMessages)
+	// if err == nil {
+	// 	fmt.Fprintf(&statsMsg, "📨 Всего сообщений: %d\n", totalMessages)
+	// }
 
 	// 2. Статистика по благодарностям
 	var totalThanks int
