@@ -193,7 +193,7 @@ func (b *Bot) handleSpamMessage(message *tgbotapi.Message) {
 От: @%s (%s %s)
 Текст сообщения:
 %s`
-		userWarning = `🚫 Ваше сообщение было удалено как спам!
+		userWarning = `🚫 @%s, ваше сообщение будет удалено как спам!
 Повторные нарушения могут привести к ограничениям.`
 	)
 
@@ -231,22 +231,36 @@ func (b *Bot) handleSpamMessage(message *tgbotapi.Message) {
 		}
 	}
 
-	// Отправляем предупреждение пользователю
-	userMsg := tgbotapi.NewMessage(message.Chat.ID, userWarning)
+	// Формируем и отправляем предупреждение пользователю с упоминанием
+	userWarningText := fmt.Sprintf(userWarning, message.From.UserName)
+	userMsg := tgbotapi.NewMessage(message.Chat.ID, userWarningText)
 	userMsg.ReplyToMessageID = message.MessageID
+
+	// Если у пользователя есть username, делаем упоминание
+	if message.From.UserName != "" {
+		userMsg.Entities = []tgbotapi.MessageEntity{
+			{
+				Type:   "mention",
+				Offset: 0,
+				Length: len(message.From.UserName) + 1, // +1 для символа @
+				User:   &tgbotapi.User{ID: message.From.ID},
+			},
+		}
+	}
+
 	_, err = b.tgBot.Send(userMsg)
 	if err != nil {
 		log.Printf("Ошибка отправки предупреждения пользователю: %v", err)
 	}
 
 	// Удаляем спам-сообщение
-	_, err = b.tgBot.Send(tgbotapi.DeleteMessageConfig{
-		ChatID:    message.Chat.ID,
-		MessageID: message.MessageID,
-	})
-	if err != nil {
-		log.Printf("Ошибка удаления сообщения: %v", err)
-	}
+	// _, err = b.tgBot.Send(tgbotapi.DeleteMessageConfig{
+	// 	ChatID:    message.Chat.ID,
+	// 	MessageID: message.MessageID,
+	// })
+	// if err != nil {
+	// 	log.Printf("Ошибка удаления сообщения: %v", err)
+	// }
 
 	// Логируем событие в БД
 	go func(msg *tgbotapi.Message) {
