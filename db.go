@@ -10,6 +10,16 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+func (b *Bot) LogIncident(chatID int64, userID int64, text string, timestamp int64) error {
+	_, err := b.db.Exec(
+		`INSERT INTO incidents
+		(chat_id, user_id, message_text, created_at)
+		VALUES (?, ?, ?, ?)`,
+		chatID, userID, text, time.Unix(timestamp, 0).Format(time.RFC3339),
+	)
+	return err
+}
+
 func (b *Bot) initDB() error {
 	// Список миграций в порядке их применения
 	migrations := []struct {
@@ -19,22 +29,32 @@ func (b *Bot) initDB() error {
 		{
 			name: "initial_schema",
 			sql: `
-                CREATE TABLE IF NOT EXISTS chats (
-                    id INTEGER PRIMARY KEY,
-                    title TEXT,
-                    type TEXT,
-                    username TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
-                
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY,
-                    username TEXT,
-                    first_name TEXT,
-                    last_name TEXT,
-                    ai_user_info TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                );
+			    CREATE TABLE IF NOT EXISTS chats (
+			        id INTEGER PRIMARY KEY,
+			        title TEXT,
+			        type TEXT,
+			        username TEXT,
+			        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			    );
+			    
+			    CREATE TABLE IF NOT EXISTS users (
+			        id INTEGER PRIMARY KEY,
+			        username TEXT,
+			        first_name TEXT,
+			        last_name TEXT,
+			        ai_user_info TEXT,
+			        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			    );
+
+			    CREATE TABLE IF NOT EXISTS incidents (
+			        id INTEGER PRIMARY KEY AUTOINCREMENT,
+			        chat_id INTEGER,
+			        user_id INTEGER,
+			        message_text TEXT,
+			        created_at TIMESTAMP,
+			        FOREIGN KEY(chat_id) REFERENCES chats(id),
+			        FOREIGN KEY(user_id) REFERENCES users(id)
+			    );
             `,
 		},
 		{

@@ -56,12 +56,12 @@ type Bot struct {
 	lastSummary map[int64]time.Time // Время последней сводки по чатам
 }
 
-// ChatMessage структура для хранения сообщений
-// type ChatMessage struct {
-// 	User string
-// 	Text string
-// 	Time time.Time
-// }
+// ContextMessage представляет сообщение в контексте диалога
+type ContextMessage struct {
+	Role      string // "user" или "assistant"
+	Content   string
+	Timestamp int64
+}
 
 // DB структуры
 type DBChat struct {
@@ -342,17 +342,28 @@ func (b *Bot) Run() {
 			log.Println(logMsg)
 
 			// Обработка сообщения
-			b.processMessage(update.Message)
+			b.processAllMessage(update.Message)
 		}
 	}
 }
 
-func (b *Bot) processMessage(message *tgbotapi.Message) {
+func (b *Bot) processAllMessage(message *tgbotapi.Message) {
 	chatID := message.Chat.ID
 	userID := message.From.ID
 	msgText := message.Text
 	if msgText == "" && message.Caption != "" {
 		msgText = message.Caption
+	}
+
+	// проверяем разрешен ли чат в .env
+	if !b.isChatAllowed(message.Chat.ID) {
+		b.sendMessage(message.Chat.ID, fmt.Sprintf("Извините, я не работаю в этом чате. обратитесь к администратору. %v", message.Chat.ID))
+		return
+	}
+	// Проверяем, может ли бот читать сообщения в этом чате
+	if !b.canBotReadMessages(chatID) {
+		log.Printf("Бот не может читать сообщения в чате %d", chatID)
+		return
 	}
 
 	// Проверяем возраст сообщения
@@ -365,7 +376,10 @@ func (b *Bot) processMessage(message *tgbotapi.Message) {
 	// Логируем информацию о сообщении
 	log.Printf("[processMessage] Cообщение от %d в чате %d: %q", userID, chatID, msgText)
 
-	// Обработка команд
+	// Обработка всех сообщений, валидации проверки, антиспам
+	b.handleAllMessages(message)
+
+	// Обработка сообщений команд
 	if message.IsCommand() {
 		log.Printf("[processMessage]Команда: %s", message.Command())
 		b.handleCommand(message)
@@ -446,7 +460,7 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 	// Логируем ID чата и пользователя
 	log.Printf("[storeMessage] Сохранение от %d в чате %d", userID, chatID)
 
-	// Пропускаем служебные сообщения
+	// Пропускаем служебные пустые сообщения
 	if message.Text == "" {
 		// Проверяем наличие подписи (для медиа-сообщений)
 		if message.Caption == "" {
@@ -454,35 +468,11 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 		}
 	}
 
-	// Проверяем, может ли бот читать сообщения в этом чате
-	if !b.canBotReadMessages(chatID) {
-		log.Printf("Бот не может читать сообщения в чате %d", chatID)
-		return
-	}
-
-	log.Printf("")
-
 	// Используем текст или подпись (для медиа-сообщений)
 	text := message.Text
 	if text == "" && message.Caption != "" {
 		text = message.Caption
 	}
-
-	// // Создаем структуру сообщения
-	// msg := ChatMessage{
-	// 	User: userName,
-	// 	Text: text,
-	// 	Time: time.Now(),
-	// }
-
-	// // Инициализируем историю чата если нужно
-	// if _, exists := b.chatHistories[chatID]; !exists {
-	// 	b.chatHistories[chatID] = []ChatMessage{}
-	// }
-
-	// // Добавляем сообщение в историю
-	// b.chatHistories[chatID] = append(b.chatHistories[chatID], msg)
-	// //log.Printf("Сохранено %d: [%v]%s: %s", chatID, userID, msg.User, msg.Text)
 
 	// Сохраняем чат и пользователя в БД
 	err := b.saveChat(message.Chat)
@@ -508,8 +498,6 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 		log.Printf("Ошибка сохранения сообщения: %v", err)
 	}
 
-	// Проверяем, содержит ли сообщение "спасибо" или "спс"
-	b.checkForThanks(message)
 }
 
 // handleReplyToBot обрабатывает ответы на сообщения бота
@@ -603,162 +591,4 @@ func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
 
 	fmt.Printf("Resp AI: %v", summary)
 	b.sendMessage(message.Chat.ID, summary+" @"+message.From.UserName)
-}
-
-// ContextMessage представляет сообщение в контексте диалога
-type ContextMessage struct {
-	Role      string // "user" или "assistant"
-	Content   string
-	Timestamp int64
-}
-
-// handleStats обрабатывает команду /stats
-func (b *Bot) handleStats(message *tgbotapi.Message) {
-	chatID := message.Chat.ID
-
-	// Формируем сообщение со статистикой
-	var statsMsg strings.Builder
-	fmt.Fprintf(&statsMsg, "📊 Статистика чата:\n\n")
-
-	// // 1. Общая статистика по сообщениям
-	// var totalMessages int
-	// err := b.db.QueryRow("SELECT COUNT(*) FROM messages WHERE chat_id = ?", chatID).Scan(&totalMessages)
-	// if err == nil {
-	// 	fmt.Fprintf(&statsMsg, "📨 Всего сообщений: %d\n", totalMessages)
-	// }
-
-	// 2. Статистика по благодарностям
-	var totalThanks int
-	err := b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE chat_id = ?", chatID).Scan(&totalThanks)
-	if err == nil {
-		fmt.Fprintf(&statsMsg, "🙏 Всего благодарностей: %d\n\n", totalThanks)
-	}
-
-	// 3. Топ получателей благодарностей
-	fmt.Fprintf(&statsMsg, "🏆 Топ-5 самых благодарных пользователей:\n")
-	rows, err := b.db.Query(`
-			SELECT u.username, COUNT(*) as thanks_count
-			FROM thanks t
-			JOIN users u ON t.from_user_id = u.id
-			WHERE t.chat_id = ?
-			GROUP BY u.id
-			ORDER BY thanks_count DESC
-			LIMIT 5`, chatID)
-	if err == nil {
-		defer rows.Close()
-		for i := 1; rows.Next(); i++ {
-			var username string
-			var count int
-			if err := rows.Scan(&username, &count); err == nil {
-				fmt.Fprintf(&statsMsg, "%d. %s (%d благодарностей)\n", i, username, count)
-			}
-		}
-	}
-
-	// 4. Топ получателей благодарностей
-	fmt.Fprintf(&statsMsg, "\n🏆 Топ-5 самых благодаримых пользователей:\n")
-	rows, err = b.db.Query(`
-			SELECT u.username, COUNT(*) as thanks_count
-			FROM thanks t
-			JOIN users u ON t.to_user_id = u.id
-			WHERE t.chat_id = ?
-			GROUP BY u.id
-			ORDER BY thanks_count DESC
-			LIMIT 5`, chatID)
-	if err == nil {
-		defer rows.Close()
-		for i := 1; rows.Next(); i++ {
-			var username string
-			var count int
-			if err := rows.Scan(&username, &count); err == nil {
-				fmt.Fprintf(&statsMsg, "%d. %s (%d благодарностей)\n", i, username, count)
-			}
-		}
-	}
-
-	b.sendMessage(chatID, statsMsg.String())
-}
-
-// handleTopic обрабатывает команду /tema
-func (b *Bot) handleTopic(message *tgbotapi.Message) {
-	chatID := message.Chat.ID
-
-	// Проверка разрешен ли чат
-	if !b.isChatAllowed(chatID) {
-		b.sendMessage(chatID, "Извините, у меня нет доступа к истории этого чата.")
-		return
-	}
-
-	messages, err := b.getRecentMessages(chatID, -1)
-	if err != nil {
-		log.Printf("Ошибка получения сообщений: %v", err)
-		b.sendMessage(chatID, "Не удалось получить историю сообщений.")
-		return
-	}
-
-	if len(messages) == 0 {
-		b.sendMessage(chatID, "Нет сообщений для анализа.")
-		return
-	}
-
-	// Форматируем историю сообщений
-	var messagesText strings.Builder
-	for _, msg := range messages {
-		fmt.Fprintf(&messagesText, "%s: %s\n",
-			msg.Username,
-			msg.Text)
-	}
-
-	// Создание темы с помощью локальной LLM
-	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.TopicPrompt, messagesText.String()), message)
-	if err != nil {
-		log.Printf("Ошибка генерации темы: %v", err)
-		b.sendMessage(chatID, "Не удалось сгенерировать тему.")
-		return
-	}
-
-	b.sendMessage(chatID, "Обсудим?\n\n"+summary)
-	b.lastSummary[chatID] = time.Now()
-}
-
-// handleAnekdot обрабатывает команду /anekdot
-func (b *Bot) handleAnekdot(message *tgbotapi.Message) {
-	chatID := message.Chat.ID
-
-	// Проверка разрешен ли чат
-	if !b.isChatAllowed(chatID) {
-		b.sendMessage(chatID, "Извините, у меня нет доступа к истории этого чата.")
-		return
-	}
-
-	messages, err := b.getRecentMessages(chatID, -1)
-	if err != nil {
-		log.Printf("Ошибка получения сообщений: %v", err)
-		b.sendMessage(chatID, "Не удалось получить историю сообщений.")
-		return
-	}
-
-	if len(messages) == 0 {
-		b.sendMessage(chatID, "Нет сообщений для анализа.")
-		return
-	}
-
-	// Форматируем историю сообщений
-	var messagesText strings.Builder
-	for _, msg := range messages {
-		fmt.Fprintf(&messagesText, "%s: %s\n",
-			msg.Username,
-			msg.Text)
-	}
-
-	// Создание анекдота с помощью локальной LLM
-	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.AnekdotPrompt, messagesText.String()), message)
-	if err != nil {
-		log.Printf("Ошибка генерации анекдота: %v", err)
-		b.sendMessage(chatID, "Не смог придумать анекдот, попробуй позже.")
-		return
-	}
-
-	b.sendMessage(chatID, "📝 Аnekdot:\n\n"+summary)
-	b.lastSummary[chatID] = time.Now()
 }

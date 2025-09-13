@@ -11,18 +11,20 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+func (b *Bot) handleAllMessages(message *tgbotapi.Message) {
+
+	// Проверка на спам перед обработкой команды
+	if b.isSpam(message.Text) {
+		b.handleSpamMessage(message)
+		return
+	}
+
+	// Проверяем, содержит ли сообщение "спасибо" или "спс"
+	b.checkForThanks(message)
+}
+
 // CommandHandler обрабатывает команды бота
 func (b *Bot) handleCommand(message *tgbotapi.Message) {
-	if !b.isChatAllowed(message.Chat.ID) {
-		b.sendMessage(message.Chat.ID, fmt.Sprintf("Извините, я не работаю в этом чате. %v", message.Chat.ID))
-		return
-	}
-
-	if !b.canBotReadMessages(message.Chat.ID) {
-		b.sendMessage(message.Chat.ID, "Мне нужны права администратора или участника в этой группе чтобы видеть сообщения.")
-		return
-	}
-
 	switch message.Command() {
 	case "start":
 		b.handleStart(message)
@@ -183,6 +185,78 @@ func (b *Bot) handleClear(message *tgbotapi.Message) {
 	b.DeleteUserContext(message.Chat.ID, message.From.ID)
 }
 
+// Обработка спам-сообщений
+func (b *Bot) handleSpamMessage(message *tgbotapi.Message) {
+	// Константы сообщений
+	const (
+		adminWarning = `⚠️ *СПАМ-алерт* в [чате](https://t.me/c/%s/%d) %s
+От: @%s (%s %s)
+Текст сообщения:
+%s`
+		userWarning = `🚫 Ваше сообщение было удалено как спам!
+Повторные нарушения могут привести к ограничениям.`
+	)
+
+	// Получаем список администраторов чата
+	admins, err := b.tgBot.GetChatAdministrators(tgbotapi.ChatAdministratorsConfig{
+		ChatConfig: tgbotapi.ChatConfig{ChatID: message.Chat.ID}})
+	if err != nil {
+		log.Printf("Ошибка получения администраторов: %v", err)
+		return
+	}
+
+	// Формируем ссылку на сообщение
+	chatIDStr := fmt.Sprintf("%d", message.Chat.ID)
+	if message.Chat.ID < 0 {
+		chatIDStr = fmt.Sprintf("%d", message.Chat.ID*-1)
+	}
+
+	// Формируем и отправляем предупреждение админам
+	warnMsg := fmt.Sprintf(adminWarning,
+		chatIDStr[4:],
+		message.MessageID,
+		message.Chat.Title,
+		message.From.UserName,
+		message.From.FirstName,
+		message.From.LastName,
+		message.Text)
+
+	for _, admin := range admins {
+		msg := tgbotapi.NewMessage(admin.User.ID, warnMsg)
+		msg.ParseMode = "Markdown"
+		msg.DisableWebPagePreview = true
+		_, err := b.tgBot.Send(msg)
+		if err != nil {
+			log.Printf("Ошибка отправки предупреждения админу %d: %v", admin.User.ID, err)
+		}
+	}
+
+	// Отправляем предупреждение пользователю
+	userMsg := tgbotapi.NewMessage(message.Chat.ID, userWarning)
+	userMsg.ReplyToMessageID = message.MessageID
+	_, err = b.tgBot.Send(userMsg)
+	if err != nil {
+		log.Printf("Ошибка отправки предупреждения пользователю: %v", err)
+	}
+
+	// Удаляем спам-сообщение
+	_, err = b.tgBot.Send(tgbotapi.DeleteMessageConfig{
+		ChatID:    message.Chat.ID,
+		MessageID: message.MessageID,
+	})
+	if err != nil {
+		log.Printf("Ошибка удаления сообщения: %v", err)
+	}
+
+	// Логируем событие в БД
+	go func(msg *tgbotapi.Message) {
+		err := b.LogIncident(msg.Chat.ID, msg.From.ID, msg.Text, time.Now().Unix())
+		if err != nil {
+			log.Printf("Ошибка логирования спама: %v", err)
+		}
+	}(message)
+}
+
 // handleUnknownCommand обрабатывает неизвестные команды
 func (b *Bot) handleUnknownCommand(message *tgbotapi.Message) {
 	// Список случайных ответов
@@ -254,4 +328,149 @@ func (b *Bot) handleGenImage(message *tgbotapi.Message) {
 		log.Printf("Ошибка отправки изображения: %v", err)
 		b.sendMessage(chatID, "Не удалось отправить изображение. Попробуйте снова.")
 	}
+}
+
+// handleTopic обрабатывает команду /tema
+func (b *Bot) handleTopic(message *tgbotapi.Message) {
+	chatID := message.Chat.ID
+
+	messages, err := b.getRecentMessages(chatID, -1)
+	if err != nil {
+		log.Printf("Ошибка получения сообщений: %v", err)
+		b.sendMessage(chatID, "Не удалось получить историю сообщений.")
+		return
+	}
+
+	if len(messages) == 0 {
+		b.sendMessage(chatID, "Нет сообщений для анализа.")
+		return
+	}
+
+	// Форматируем историю сообщений
+	var messagesText strings.Builder
+	for _, msg := range messages {
+		fmt.Fprintf(&messagesText, "%s: %s\n",
+			msg.Username,
+			msg.Text)
+	}
+
+	// Создание темы с помощью локальной LLM
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.TopicPrompt, messagesText.String()), message)
+	if err != nil {
+		log.Printf("Ошибка генерации темы: %v", err)
+		b.sendMessage(chatID, "Не удалось сгенерировать тему.")
+		return
+	}
+
+	b.sendMessage(chatID, "Обсудим?\n\n"+summary)
+	b.lastSummary[chatID] = time.Now()
+}
+
+// handleAnekdot обрабатывает команду /anekdot
+func (b *Bot) handleAnekdot(message *tgbotapi.Message) {
+	chatID := message.Chat.ID
+
+	// Проверка разрешен ли чат
+	if !b.isChatAllowed(chatID) {
+		b.sendMessage(chatID, "Извините, у меня нет доступа к истории этого чата.")
+		return
+	}
+
+	messages, err := b.getRecentMessages(chatID, -1)
+	if err != nil {
+		log.Printf("Ошибка получения сообщений: %v", err)
+		b.sendMessage(chatID, "Не удалось получить историю сообщений.")
+		return
+	}
+
+	if len(messages) == 0 {
+		b.sendMessage(chatID, "Нет сообщений для анализа.")
+		return
+	}
+
+	// Форматируем историю сообщений
+	var messagesText strings.Builder
+	for _, msg := range messages {
+		fmt.Fprintf(&messagesText, "%s: %s\n",
+			msg.Username,
+			msg.Text)
+	}
+
+	// Создание анекдота с помощью локальной LLM
+	summary, err := b.generateAiRequest(b.config.SystemPrompt, fmt.Sprintf(b.config.AnekdotPrompt, messagesText.String()), message)
+	if err != nil {
+		log.Printf("Ошибка генерации анекдота: %v", err)
+		b.sendMessage(chatID, "Не смог придумать анекдот, попробуй позже.")
+		return
+	}
+
+	b.sendMessage(chatID, "📝 Аnekdot:\n\n"+summary)
+	b.lastSummary[chatID] = time.Now()
+}
+
+// handleStats обрабатывает команду /stats
+func (b *Bot) handleStats(message *tgbotapi.Message) {
+	chatID := message.Chat.ID
+
+	// Формируем сообщение со статистикой
+	var statsMsg strings.Builder
+	fmt.Fprintf(&statsMsg, "📊 Статистика чата:\n\n")
+
+	// // 1. Общая статистика по сообщениям
+	// var totalMessages int
+	// err := b.db.QueryRow("SELECT COUNT(*) FROM messages WHERE chat_id = ?", chatID).Scan(&totalMessages)
+	// if err == nil {
+	// 	fmt.Fprintf(&statsMsg, "📨 Всего сообщений: %d\n", totalMessages)
+	// }
+
+	// 2. Статистика по благодарностям
+	var totalThanks int
+	err := b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE chat_id = ?", chatID).Scan(&totalThanks)
+	if err == nil {
+		fmt.Fprintf(&statsMsg, "🙏 Всего благодарностей: %d\n\n", totalThanks)
+	}
+
+	// 3. Топ получателей благодарностей
+	fmt.Fprintf(&statsMsg, "🏆 Топ-5 самых благодарных пользователей:\n")
+	rows, err := b.db.Query(`
+			SELECT u.username, COUNT(*) as thanks_count
+			FROM thanks t
+			JOIN users u ON t.from_user_id = u.id
+			WHERE t.chat_id = ?
+			GROUP BY u.id
+			ORDER BY thanks_count DESC
+			LIMIT 5`, chatID)
+	if err == nil {
+		defer rows.Close()
+		for i := 1; rows.Next(); i++ {
+			var username string
+			var count int
+			if err := rows.Scan(&username, &count); err == nil {
+				fmt.Fprintf(&statsMsg, "%d. %s (%d благодарностей)\n", i, username, count)
+			}
+		}
+	}
+
+	// 4. Топ получателей благодарностей
+	fmt.Fprintf(&statsMsg, "\n🏆 Топ-5 самых благодаримых пользователей:\n")
+	rows, err = b.db.Query(`
+			SELECT u.username, COUNT(*) as thanks_count
+			FROM thanks t
+			JOIN users u ON t.to_user_id = u.id
+			WHERE t.chat_id = ?
+			GROUP BY u.id
+			ORDER BY thanks_count DESC
+			LIMIT 5`, chatID)
+	if err == nil {
+		defer rows.Close()
+		for i := 1; rows.Next(); i++ {
+			var username string
+			var count int
+			if err := rows.Scan(&username, &count); err == nil {
+				fmt.Fprintf(&statsMsg, "%d. %s (%d благодарностей)\n", i, username, count)
+			}
+		}
+	}
+
+	b.sendMessage(chatID, statsMsg.String())
 }

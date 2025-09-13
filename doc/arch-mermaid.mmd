@@ -1,0 +1,25 @@
+graph TD
+    A[Пользователь Telegram] --> B[Telegram API]
+    B --> C{main.go\nЯдро бота}
+    C --> D[commands.go\nОбработка команд]
+    C --> E[ai.go\nГенерация контента]
+    C --> F[db.go\nУправление БД]
+    C --> G[tools.go\nУтилиты]
+    
+    D --> H[Команды]
+    E --> I[Локальная LLM]
+    E --> J[Генератор изображений]
+    F --> K[SQLite]
+    G --> L[Логика благодарностей\nи управления пользователями]
+    M[Ansible] --> N[Сборка приложения]
+    N --> O[Настройка сервисов Debian]
+    O --> P[Логирование\nв /opt/FacilitatorBot/logs]
+    
+    C --> Q[Конфигурация]
+    Q --> R[env.example настройки окружения]
+    Q --> S[.continue/config.yaml\n конфиг плагина]
+    
+    style C fill:#f9f,stroke:#333,stroke-width:2px
+    style M fill:#9f9,stroke:#090
+    linkStyle 0 stroke:#ccf,stroke-width:2px;
+    linkStyle 1 stroke:#fcc,stroke-width:2px;

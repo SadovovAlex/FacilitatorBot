@@ -57,6 +57,20 @@ func (b *Bot) canBotReadMessages(chatID int64) bool {
 	return member.Status == "administrator" || member.Status == "member"
 }
 
+// isChatAllowed проверяет разрешен ли чат
+func (b *Bot) isChatAllowed(chatID int64) bool {
+	if len(b.config.AllowedGroups) == 0 {
+		return true
+	}
+
+	for _, id := range b.config.AllowedGroups {
+		if id == chatID {
+			return true
+		}
+	}
+	return false
+}
+
 // isBotMentioned проверяет, обращается ли сообщение к боту
 func (b *Bot) isBotMentioned(message *tgbotapi.Message) bool {
 	// Приводим текст к нижнему регистру для регистронезависимого сравнения
@@ -142,20 +156,6 @@ func (b *Bot) sendMessage(chatID int64, text string) {
 	if err != nil {
 		log.Printf("Ошибка отправки сообщения: %v", err)
 	}
-}
-
-// isChatAllowed проверяет разрешен ли чат
-func (b *Bot) isChatAllowed(chatID int64) bool {
-	if len(b.config.AllowedGroups) == 0 {
-		return true
-	}
-
-	for _, id := range b.config.AllowedGroups {
-		if id == chatID {
-			return true
-		}
-	}
-	return false
 }
 
 // checkForThanks проверяет сообщение на наличие слов благодарности и сохраняет в БД
