@@ -196,40 +196,41 @@ func (b *Bot) handleSpamMessage(message *tgbotapi.Message) {
 		userWarning = `🚫 @%s, ваше сообщение будет удалено как спам!
 Повторные нарушения могут привести к ограничениям.`
 	)
+	var err error
 
-	// Получаем список администраторов чата
-	admins, err := b.tgBot.GetChatAdministrators(tgbotapi.ChatAdministratorsConfig{
-		ChatConfig: tgbotapi.ChatConfig{ChatID: message.Chat.ID}})
-	if err != nil {
-		log.Printf("Ошибка получения администраторов: %v", err)
-		return
-	}
+	// // Получаем список администраторов чата
+	// admins, err := b.tgBot.GetChatAdministrators(tgbotapi.ChatAdministratorsConfig{
+	// 	ChatConfig: tgbotapi.ChatConfig{ChatID: message.Chat.ID}})
+	// if err != nil {
+	// 	log.Printf("Ошибка получения администраторов: %v", err)
+	// 	return
+	// }
 
-	// Формируем ссылку на сообщение
-	chatIDStr := fmt.Sprintf("%d", message.Chat.ID)
-	if message.Chat.ID < 0 {
-		chatIDStr = fmt.Sprintf("%d", message.Chat.ID*-1)
-	}
+	// // Формируем ссылку на сообщение
+	// chatIDStr := fmt.Sprintf("%d", message.Chat.ID)
+	// if message.Chat.ID < 0 {
+	// 	chatIDStr = fmt.Sprintf("%d", message.Chat.ID*-1)
+	// }
 
-	// Формируем и отправляем предупреждение админам
-	warnMsg := fmt.Sprintf(adminWarning,
-		chatIDStr[4:],
-		message.MessageID,
-		message.Chat.Title,
-		message.From.UserName,
-		message.From.FirstName,
-		message.From.LastName,
-		message.Text)
+	// // Формируем и отправляем предупреждение админам
+	// warnMsg := fmt.Sprintf(adminWarning,
+	// 	chatIDStr[4:],
+	// 	message.MessageID,
+	// 	message.Chat.Title,
+	// 	message.From.UserName,
+	// 	message.From.FirstName,
+	// 	message.From.LastName,
+	// 	message.Text)
 
-	for _, admin := range admins {
-		msg := tgbotapi.NewMessage(admin.User.ID, warnMsg)
-		msg.ParseMode = "Markdown"
-		msg.DisableWebPagePreview = true
-		_, err := b.tgBot.Send(msg)
-		if err != nil {
-			log.Printf("Ошибка отправки предупреждения админу %d: %v", admin.User.ID, err)
-		}
-	}
+	// for _, admin := range admins {
+	// 	msg := tgbotapi.NewMessage(admin.User.ID, warnMsg)
+	// 	msg.ParseMode = "Markdown"
+	// 	msg.DisableWebPagePreview = true
+	// 	_, err := b.tgBot.Send(msg)
+	// 	if err != nil {
+	// 		log.Printf("Ошибка отправки предупреждения админу %d: %v", admin.User.ID, err)
+	// 	}
+	// }
 
 	// Формируем и отправляем предупреждение пользователю с упоминанием
 	userWarningText := fmt.Sprintf(userWarning, message.From.UserName)
