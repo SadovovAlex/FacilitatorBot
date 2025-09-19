@@ -16,7 +16,7 @@ func (b *Bot) isSpam(text string) (bool, string, string) {
 	// Создаем карту паттернов с описаниями для лучшего логирования
 	patternDefinitions := map[string]string{
 		// Ссылки и контакты
-		`(http|https|ftp|www\.|t\.me|telegram\.me|\+\d{7,}|\d{10,})`: "ссылки и контакты",
+		`(http|https|ftp|www\.|t\.me|telegram\.me|\+\d{7,})`: "ссылки и контакты",
 		//`[@#][a-z0-9_]{4,}`: "длинные упоминания и хэштеги",
 
 		// Финансовый спам и скам
