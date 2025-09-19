@@ -14,8 +14,10 @@ import (
 func (b *Bot) handleAllMessages(message *tgbotapi.Message) {
 
 	// Проверка на спам перед обработкой команды
-	if b.isSpam(message.Text) {
-		b.handleSpamMessage(message)
+	isSpam, reason, pattern := b.isSpam(message.Text)
+	if isSpam {
+		fmt.Printf("Обнаружен спам: %s (паттерн: %s)\n", reason, pattern)
+		b.handleSpamMessage(message, reason)
 		return
 	}
 
@@ -186,14 +188,15 @@ func (b *Bot) handleClear(message *tgbotapi.Message) {
 }
 
 // Обработка спам-сообщений
-func (b *Bot) handleSpamMessage(message *tgbotapi.Message) {
+func (b *Bot) handleSpamMessage(message *tgbotapi.Message, reason string) {
 	// Константы сообщений
 	const (
 		adminWarning = `⚠️ *СПАМ-алерт* в [чате](https://t.me/c/%s/%d) %s
 От: @%s (%s %s)
 Текст сообщения:
 %s`
-		userWarning = `🚫 @%s, ваше сообщение будет удалено как спам!
+		userWarning = `🚫 @%s, сообщение похоже на спам!
+(%s)		
 Повторные нарушения могут привести к ограничениям.`
 	)
 	var err error
@@ -233,7 +236,7 @@ func (b *Bot) handleSpamMessage(message *tgbotapi.Message) {
 	// }
 
 	// Формируем и отправляем предупреждение пользователю с упоминанием
-	userWarningText := fmt.Sprintf(userWarning, message.From.UserName)
+	userWarningText := fmt.Sprintf(userWarning, message.From.UserName, reason)
 	userMsg := tgbotapi.NewMessage(message.Chat.ID, userWarningText)
 	userMsg.ReplyToMessageID = message.MessageID
 
