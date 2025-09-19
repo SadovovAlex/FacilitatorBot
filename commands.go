@@ -14,9 +14,8 @@ import (
 func (b *Bot) handleAllMessages(message *tgbotapi.Message) {
 
 	// Проверка на спам перед обработкой команды
-	isSpam, reason, pattern := b.isSpam(message.Text)
+	isSpam, reason, _ := b.isSpam(message.Text)
 	if isSpam {
-		fmt.Printf("Обнаружен спам: %s (паттерн: %s)\n", reason, pattern)
 		b.handleSpamMessage(message, reason)
 		return
 	}
@@ -432,7 +431,7 @@ func (b *Bot) handleStats(message *tgbotapi.Message) {
 
 	// Формируем сообщение со статистикой
 	var statsMsg strings.Builder
-	fmt.Fprintf(&statsMsg, "📊 Статистика чата:\n\n")
+	//fmt.Fprintf(&statsMsg, "📊 Статистика чата:\n\n")
 
 	// // 1. Общая статистика по сообщениям
 	// var totalMessages int

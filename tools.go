@@ -26,7 +26,6 @@ var summaryTitles = []string{
 
 // Функция для получения случайного заголовка
 func getRandomSummaryTitle() string {
-	rand.Seed(time.Now().UnixNano())
 	return summaryTitles[rand.Intn(len(summaryTitles))]
 }
 

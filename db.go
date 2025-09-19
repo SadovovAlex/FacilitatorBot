@@ -140,6 +140,18 @@ func (b *Bot) initDB() error {
             `,
 		},
 		{
+			name: "create_incidents_table",
+			sql: `
+        CREATE TABLE IF NOT EXISTS incidents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            message_text TEXT NOT NULL,
+            created_at DATETIME NOT NULL
+        );
+    `,
+		},
+		{
 			name: "add_ai_user_info_column",
 			sql:  `ALTER TABLE users ADD COLUMN ai_user_info TEXT;`,
 		},
@@ -200,6 +212,13 @@ func (b *Bot) initDB() error {
                 CREATE INDEX IF NOT EXISTS idx_users_role_user ON users_role(user_id);
                 CREATE INDEX IF NOT EXISTS idx_users_role_chat ON users_role(chat_id);
             `,
+		},
+		{
+			name: "create_incidents_indexes",
+			sql: `
+        CREATE INDEX IF NOT EXISTS idx_incidents_chat_user ON incidents(chat_id, user_id);
+        CREATE INDEX IF NOT EXISTS idx_incidents_timestamp ON incidents(created_at);
+    `,
 		},
 	}
 
