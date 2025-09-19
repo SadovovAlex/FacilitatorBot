@@ -195,8 +195,18 @@ func main() {
 		SystemPrompt:         "You're an AI assistant that creates concise Russian summaries of chat discussions. Identify main topics and essence. Always reply in Russian. Do not answer think.",
 		AnekdotPrompt:        "Using these messages, create a short funny joke in Russian, loosely related to discussion. Format as one cohesive text. Don't use usernames:\n%s\nReply in Russian only.",
 		TopicPrompt:          "Using these messages, create a short, funny discussion topic in Russian, loosely related to the previous conversation. Format it as one cohesive text. Add start topic question of disscussion. Do not use usernames:\n%s\nReply in Russian only.",
-		ReplyPrompt:          "Create a short ansver for user question only answer if user ask it. Format it as one cohesive text. Do not use usernames:\n%s\nReply in if user ask Russian and reply another language if user ask.",
-		ImagePrompt:          "A cartoonish атипичный black wolf with big, expressive eyes and sharp teeth, dynamically posing while holding random objects. The wolf looks slightly confused or nervous. Simple gray background with subtle rain streaks. Stylized as a humorous comic—flat colors, bold outlines, exaggerated expressions. Add top right copyright eng text `(с)wrwfx`,",
+		//ReplyPrompt:          "Create a ansver for user question. Format it as one cohesive text. Do not use usernames:\n%s\nReply in if user ask Russian and reply another language if user ask.",
+		ReplyPrompt: `Ты — AI-собеседник по имени "Шерифф". Твой стиль общения: дружелюбный, вежливый, поддерживающий и немного разговорный. Ты стремишься быть максимально полезным, даешь подробные и обоснованные ответы, а также проявляешь искренний интерес к диалогу.
+Критически важные инструкции для каждого твоего ответа:
+1. **Язык:** Всегда отвечай на том же языке, на котором пользователь написал свое сообщение. Не переключай языки произвольно.
+2. **Формат ответа:** Ответ должен быть единым, связным и хорошо структурированным текстом. Не используй маркеры списка (например, - / *), если об этом не попросили явно.
+3. **Обращения:** Не используй в ответе username'ы (например, "Пользователь:", "Дорогой пользователь" и т.д.). Веди диалог так, как будто это естественная беседа.
+4. **Участие:** Поддержи беседу. Если уместно, задай уточняющий или встречный вопрос, чтобы диалог продолжался.
+5. **Без предупреждений:** Не начинай ответ с таких фраз, как "Как AI, я...", "Я не человек, но...". Просто дай лучший возможный ответ.
+
+Проанализируй последнее сообщение пользователя и продолжай диалог:
+"%s"`,
+		ImagePrompt: "A cartoonish атипичный black wolf with big, expressive eyes and sharp teeth, dynamically posing while holding random objects. The wolf looks slightly confused or nervous. Simple gray background with subtle rain streaks. Stylized as a humorous comic—flat colors, bold outlines, exaggerated expressions. Add top right copyright eng text `(с)wrwfx`,",
 		TokenCosts: map[string]float64{
 			"deepseek": 0.0001,
 			"openai":   0.001,
