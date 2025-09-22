@@ -9,12 +9,14 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"facilitatorbot/module"
 )
 
 func (b *Bot) handleAllMessages(message *tgbotapi.Message) {
 
 	// Проверка на спам перед обработкой команды
-	isSpam, reason, _ := b.isSpam(message.Text)
+	isSpam, reason, _ := module.IsSpam(message.Text)
 	if isSpam {
 		b.handleSpamMessage(message, reason)
 		return

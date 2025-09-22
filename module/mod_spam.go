@@ -1,4 +1,4 @@
-package main
+package module
 
 import (
 	"log"
@@ -9,7 +9,7 @@ import (
 // Проверка сообщения на спам, скам и рекламу
 // Проверка сообщения на спам, скам и рекламу
 // Возвращает (isSpam bool, reason string, pattern string)
-func (b *Bot) isSpam(text string) (bool, string, string) {
+func IsSpam(text string) (bool, string, string) {
 	// Приводим текст к нижнему регистру для регистронезависимого поиска
 	lowerText := strings.ToLower(text)
 
@@ -52,14 +52,14 @@ func (b *Bot) isSpam(text string) (bool, string, string) {
 	}
 
 	// Дополнительные проверки с возвратом причины
-	if b.hasSuspiciousWordCombinations(lowerText) {
+	if HasSuspiciousWordCombinations(lowerText) {
 		reason := "подозрительная комбинация слов"
 		log.Printf("🚨 СПАМ: %s в тексте: %s", reason, text)
 		return true, reason, "word_combination"
 	}
 
 	// Проверка на подозрительные URL
-	if b.containsSuspiciousURL(text) {
+	if ContainsSuspiciousURL(text) {
 		reason := "подозрительный URL"
 		log.Printf("🚨 СПАМ: %s в тексте: %s", reason, text)
 		return true, reason, "suspicious_url"
@@ -84,7 +84,7 @@ func (b *Bot) isSpam(text string) (bool, string, string) {
 // }
 
 // Проверка подозрительных комбинаций слов
-func (b *Bot) hasSuspiciousWordCombinations(text string) bool {
+func HasSuspiciousWordCombinations(text string) bool {
 	suspiciousCombinations := map[string]string{
 		"быстро деньги":        "быстрый заработок",
 		"легкий заработок":     "легкие деньги",
@@ -109,7 +109,7 @@ func (b *Bot) hasSuspiciousWordCombinations(text string) bool {
 }
 
 // Проверка на подозрительные URL
-func (b *Bot) containsSuspiciousURL(text string) bool {
+func ContainsSuspiciousURL(text string) bool {
 	urlPattern := `(http|https|ftp|www\.)\S+`
 	urls := regexp.MustCompile(urlPattern).FindAllString(text, -1)
 
