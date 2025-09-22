@@ -1,7 +1,7 @@
 package main
 
-// Version - версия бота
-const Version = "1.0.0"
+// версия бота
+const Version = "1.0.10"
 
 // BuildDate - дата сборки бота
 var BuildDate string

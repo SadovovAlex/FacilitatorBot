@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strconv"
 	"strings"
 	"time"
 
@@ -312,7 +313,28 @@ func getChatTitle(message *tgbotapi.Message) string {
 	}
 }
 
-// =======  tg Вспомогательная функция для получения имени пользователя
+// parseAllowedGroups парсит ALLOWED_GROUPS из .env в slice int64
+func parseAllowedGroups(envValue string) []int64 {
+	if envValue == "" {
+		return []int64{-1002478281670, -1002631108476, -1002407860030} // default values АтипичныйЧат, Админ, Админ2
+	}
+
+	groups := strings.Split(envValue, ",")
+	result := make([]int64, len(groups))
+
+	for i, group := range groups {
+		id, err := strconv.ParseInt(strings.TrimSpace(group), 10, 64)
+		if err != nil {
+			log.Printf("Ошибка парсинга ID группы %q: %v", group, err)
+			continue
+		}
+		result[i] = id
+	}
+
+	return result
+}
+
+// Вспомогательная функция для получения имени пользователя
 func getUserName(user *tgbotapi.User) string {
 	if user == nil {
 		return "Unknown"
@@ -324,7 +346,7 @@ func getUserName(user *tgbotapi.User) string {
 }
 
 // getUserByID получает пользователя по ID из БД
-func (b *Bot) getUserByID(userID int64) (*tgbotapi.User, error) {
+func (b *Bot) getUserByIDFromDB(userID int64) (*tgbotapi.User, error) {
 	var user tgbotapi.User
 	err := b.db.QueryRow(`
         SELECT id, username, first_name, last_name

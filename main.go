@@ -20,9 +20,13 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-const CHECK_HOURS = -20        // hours get DB messages
-const AI_REQUEST_TIMEOUT = 300 // seconds for AI request
-const LIMIT_MSG = 100          //лимит сообщений запрощенных для /summary
+const CHECK_HOURS = -24        // hours get DB messages
+const AI_REQUEST_TIMEOUT = 180 // seconds for AI request
+const LIMIT_MSG = 100          //default лимит сообщений запрощенных для /summary
+const IGNORE_OLD_MSG_MIN = 15  // игнорируем старые сообщение если не прочитали, но пишем в БД все =)
+// log
+const LOG_FILENAME = "tg_bot.log"
+const LOG_DIR = "logs"
 
 // Config структура для конфигурации бота
 type Config struct {
@@ -142,41 +146,22 @@ type BillingRecord struct {
 	Cost             float64
 }
 
-// parseAllowedGroups парсит ALLOWED_GROUPS из .env в slice int64
-func parseAllowedGroups(envValue string) []int64 {
-	if envValue == "" {
-		return []int64{-1002478281670, -1002631108476, -1002407860030} // default values АтипичныйЧат, Админ, Админ2
-	}
-
-	groups := strings.Split(envValue, ",")
-	result := make([]int64, len(groups))
-
-	for i, group := range groups {
-		id, err := strconv.ParseInt(strings.TrimSpace(group), 10, 64)
-		if err != nil {
-			log.Printf("Ошибка парсинга ID группы %q: %v", group, err)
-			continue
-		}
-		result[i] = id
-	}
-
-	return result
-}
-
 func main() {
 	// Настройка логирования
 	setupLogger()
 
+	// Логируем информацию о версии
+	if BuildDate != "" {
+		log.Printf("Init %s Дата сборки: %s", Version, BuildDate)
+	} else {
+		log.Printf("Init %s", Version)
+	}
+
 	// Загрузка переменных окружения из .env файла
+	log.Printf(".env loading...")
 	err := godotenv.Load()
 	if err != nil {
 		log.Printf("Ошибка загрузки .env файла: %v (продолжаем с переменными окружения)", err)
-	}
-
-	// Логируем информацию о версии
-	log.Printf("Init %s", Version)
-	if BuildDate != "" {
-		log.Printf("Дата сборки: %s", BuildDate)
 	}
 
 	// Загрузка конфигурации
@@ -217,34 +202,38 @@ func main() {
 	if config.TelegramToken == "" {
 		log.Fatal("TELEGRAM_BOT_TOKEN не установлен")
 	}
-
-	log.Printf("config.TelegramToken: %v\n", config.TelegramToken)
+	log.Printf("config.TelegramToken: %s***%s\n",
+		config.TelegramToken[:6],
+		config.TelegramToken[len(config.TelegramToken)-4:])
 
 	// Инициализация бота
+	log.Printf("TG init...")
 	bot, err := NewBot(config)
 	if err != nil {
 		log.Fatalf("Ошибка инициализации бота: %v", err)
 	}
 
 	// Инициализация БД
+	log.Printf("DB init...")
 	err = bot.initDB()
 	if err != nil {
-		log.Fatalf("Ошибка инициализации базы данных: %v", err)
+		log.Fatalf("Ошибка инициализации DB: %v", err)
 	}
 	defer bot.db.Close()
 
 	// Запуск бота
+	log.Printf("Запуск обработки...")
 	bot.Run()
 }
 
 func setupLogger() {
-	logDir := "logs"
+	logDir := LOG_DIR
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		log.Printf("Не удалось создать директорию для логов: %v. Используется текущая директория.", err)
 		logDir = "."
 	}
 
-	logFile := filepath.Join(logDir, "telegram_bot.log")
+	logFile := filepath.Join(logDir, LOG_FILENAME)
 
 	// Настройка ротации логов
 	lumberjackLogger := &lumberjack.Logger{
@@ -258,8 +247,7 @@ func setupLogger() {
 
 	// Направляем вывод логов в файл и в stdout
 	log.SetOutput(io.MultiWriter(os.Stdout, lumberjackLogger))
-
-	log.Println("Логирование запущено.")
+	log.Println("Logger Run.")
 }
 
 // getEnv возвращает значение переменной окружения или значение по умолчанию
@@ -324,7 +312,7 @@ func (b *Bot) Run() {
 			logMsg := fmt.Sprintf("[%s] ", getMessageType(update.Message))
 
 			if update.Message.From != nil {
-				logMsg += fmt.Sprintf("От: @%s[%v] ", getUserName(update.Message.From), update.Message.From.ID)
+				logMsg += fmt.Sprintf("От: %s[%v] ", getUserName(update.Message.From), update.Message.From.ID)
 			}
 
 			if update.Message.Chat != nil {
@@ -359,7 +347,6 @@ func (b *Bot) Run() {
 
 func (b *Bot) processAllMessage(message *tgbotapi.Message) {
 	chatID := message.Chat.ID
-	userID := message.From.ID
 	msgText := message.Text
 	if msgText == "" && message.Caption != "" {
 		msgText = message.Caption
@@ -376,15 +363,20 @@ func (b *Bot) processAllMessage(message *tgbotapi.Message) {
 		return
 	}
 
+	// Сохранение сообщений из групп
+	if message.Chat.IsGroup() || message.Chat.IsSuperGroup() {
+		b.storeMessage(message)
+	}
+
 	// Проверяем возраст сообщения
 	messageTime := time.Unix(int64(message.Date), 0)
-	if time.Since(messageTime) > 15*time.Minute {
-		log.Printf("[processMessage] Игнорируем старое сообщение от %d в чате %d. Возраст: %v", userID, chatID, time.Since(messageTime))
+	if time.Since(messageTime) > IGNORE_OLD_MSG_MIN*time.Minute {
+		log.Printf("[processMessage] Old msg от %v в чате %v. Возраст: %v", getUserName(message.From), getChatTitle(message), time.Since(messageTime))
 		return
 	}
 
 	// Логируем информацию о сообщении
-	log.Printf("[processMessage] Cообщение от %d в чате %d: %q", userID, chatID, msgText)
+	log.Printf("[processMessage] Cообщение от %v в чате %v: %q", getUserName(message.From), getChatTitle(message), msgText)
 
 	// Обработка всех сообщений, валидации проверки, антиспам
 	b.handleAllMessages(message)
@@ -414,10 +406,6 @@ func (b *Bot) processAllMessage(message *tgbotapi.Message) {
 		}
 	}
 
-	// Сохранение сообщений из групп
-	if message.Chat.IsGroup() || message.Chat.IsSuperGroup() {
-		b.storeMessage(message)
-	}
 }
 
 // handleBotMention обрабатывает сообщения, адресованные боту
