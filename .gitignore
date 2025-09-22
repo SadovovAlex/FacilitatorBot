@@ -25,7 +25,10 @@ go.work.sum
 .env
 
 # db
-telegram_bot.db
+*.db
+*.db-wal
+*.db-shm
+
 to-do.txt
-*.log
 ToDo.txt
+logs/
