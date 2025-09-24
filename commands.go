@@ -198,27 +198,31 @@ func (b *Bot) handlePing(message *tgbotapi.Message) {
 	//только админам
 	userAdmin, _ := b.IsUserAdmin(message.Chat.ID, message.From.ID)
 	if userAdmin {
-		commandReceiveTime := time.Now()
-		processingTime := time.Since(commandReceiveTime)
-		messageTime := time.Unix(int64(message.Date), 0)
-		timeDiff := time.Since(messageTime)
+		start := time.Now()
+		msgTime := time.Unix(int64(message.Date), 0)
+
+		buildInfo := ""
+		if BuildDate != "" {
+			buildInfo = " | " + BuildDate
+		}
 
 		response := fmt.Sprintf(
-			"🏓 Pong! v%s\n"+
-				"Build: %s\n"+
-				"⏱ Время обработки: %d ms\n"+
-				"🕒 Время: %s\n"+
-				"⏳ Задержка сообщения: %s",
-			Version, BuildDate,
-			processingTime.Milliseconds(),
-			time.Now().Format("02.01.2006 15:04:05 MST"),
-			formatDuration(timeDiff),
+			"🏓 v%s%s | ⏱%dms | 📨%s",
+			Version,
+			buildInfo,
+			time.Since(start).Milliseconds(),
+			formatDurationShort(time.Since(msgTime)),
 		)
+
 		b.sendMessage(message.Chat.ID, response)
-	} else {
-		log.Printf("[handlePing] неадмин %s запросил /ping", getUserName(message.From))
-		return
 	}
+}
+
+func formatDurationShort(d time.Duration) string {
+	if d < time.Second {
+		return fmt.Sprintf("%dms", d.Milliseconds())
+	}
+	return fmt.Sprintf("%.0fs", d.Seconds())
 }
 
 // handleSummary обрабатывает команду /summary
