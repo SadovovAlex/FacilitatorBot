@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"facilitatorbot/module"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	godotenv "github.com/joho/godotenv"
 	_ "github.com/mattn/go-sqlite3"
@@ -52,10 +54,11 @@ type Config struct {
 
 // Bot структура основного бота
 type Bot struct {
-	config     Config
-	tgBot      *tgbotapi.BotAPI
-	httpClient *http.Client
-	db         *sql.DB
+	config         Config
+	tgBot          *tgbotapi.BotAPI
+	httpClient     *http.Client
+	db             *sql.DB
+	captchaManager *module.CaptchaManager
 	//chatHistories map[int64][]ChatMessage // История сообщений по чатам
 	lastSummary map[int64]time.Time // Время последней сводки по чатам
 }
@@ -221,9 +224,19 @@ func main() {
 	}
 	defer bot.db.Close()
 
+	// Инициализация менеджера капчи
+	log.Printf("Инициализация модуля капчи...")
+	bot.initializeCaptchaManager()
+
 	// Запуск бота
 	log.Printf("Запуск обработки...")
 	bot.Run()
+}
+
+// initializeCaptchaManager инициализирует менеджер капчи
+func (b *Bot) initializeCaptchaManager() {
+	b.captchaManager = module.NewCaptchaManager(b.db)
+	log.Printf("Менеджер капчи инициализирован")
 }
 
 func setupLogger() {
@@ -272,11 +285,10 @@ func NewBot(config Config) (*Bot, error) {
 	}
 
 	return &Bot{
-		config:     config,
-		tgBot:      tgBot,
-		httpClient: &http.Client{Timeout: AI_REQUEST_TIMEOUT * time.Second},
-		db:         db,
-		//chatHistories: make(map[int64][]ChatMessage),
+		config:      config,
+		tgBot:       tgBot,
+		httpClient:  &http.Client{Timeout: AI_REQUEST_TIMEOUT * time.Second},
+		db:          db,
 		lastSummary: make(map[int64]time.Time),
 	}, nil
 }
@@ -309,10 +321,10 @@ func (b *Bot) Run() {
 	for update := range updates {
 		if update.Message != nil {
 			// Логирование входящего сообщения (сокращенная версия)
-			logMsg := fmt.Sprintf("[%s] ", getMessageType(update.Message))
+			logMsg := fmt.Sprintf("[Run()] Тип: %s", getMessageType(update.Message))
 
 			if update.Message.From != nil {
-				logMsg += fmt.Sprintf("От: %s[%v] ", getUserName(update.Message.From), update.Message.From.ID)
+				logMsg += fmt.Sprintf("%s[%v] ", getUserName(update.Message.From), update.Message.From.ID)
 			}
 
 			if update.Message.Chat != nil {
@@ -346,10 +358,9 @@ func (b *Bot) Run() {
 }
 
 func (b *Bot) processAllMessage(message *tgbotapi.Message) {
-	chatID := message.Chat.ID
-	msgText := message.Text
-	if msgText == "" && message.Caption != "" {
-		msgText = message.Caption
+	// Пропускаем служебные сообщения и сообщения от каналов
+	if message.Text == "" || message.From == nil {
+		return
 	}
 
 	// проверяем разрешен ли чат в .env
@@ -358,8 +369,8 @@ func (b *Bot) processAllMessage(message *tgbotapi.Message) {
 		return
 	}
 	// Проверяем, может ли бот читать сообщения в этом чате
-	if !b.canBotReadMessages(chatID) {
-		log.Printf("Бот не может читать сообщения в чате %d", chatID)
+	if !b.canBotReadMessages(message.Chat.ID) {
+		log.Printf("Бот не может читать сообщения в чате %d", message.Chat.ID)
 		return
 	}
 
@@ -376,9 +387,9 @@ func (b *Bot) processAllMessage(message *tgbotapi.Message) {
 	}
 
 	// Логируем информацию о сообщении
-	log.Printf("[processMessage] Cообщение от %v в чате %v: %q", getUserName(message.From), getChatTitle(message), msgText)
+	//log.Printf("[processMessage] Msg от %v в чате %v: %q", getUserName(message.From), getChatTitle(message), message.Text)
 
-	// Обработка всех сообщений, валидации проверки, антиспам
+	// Обработка всех сообщений, валидации проверки, антиспам, капча
 	b.handleAllMessages(message)
 
 	// Обработка сообщений команд
@@ -452,11 +463,11 @@ func (b *Bot) handleBotMention(message *tgbotapi.Message) {
 }
 
 func (b *Bot) storeMessage(message *tgbotapi.Message) {
-	chatID := message.Chat.ID
+	//chatID := message.Chat.ID
 	userID := message.From.ID
 
 	// Логируем ID чата и пользователя
-	log.Printf("[storeMessage] Сохранение от %d в чате %d", userID, chatID)
+	//log.Printf("[storeMessage] от %d в чате %d",  userID, chatID)
 
 	// Пропускаем служебные пустые сообщения
 	if message.Text == "" {
@@ -479,7 +490,7 @@ func (b *Bot) storeMessage(message *tgbotapi.Message) {
 	}
 
 	if message.From != nil {
-		err = b.saveUser(message.From)
+		err = b.saveUser(message)
 		if err != nil {
 			log.Printf("Ошибка сохранения пользователя: %v", err)
 		}

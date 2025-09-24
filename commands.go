@@ -14,21 +14,139 @@ import (
 )
 
 func (b *Bot) handleAllMessages(message *tgbotapi.Message) {
+	// ==============Проверяем капчу
+	// Обработка события входа пользователя в чат
+	//
+	{
+		log.Printf("Новый пользователь %s (%d) в чате %d", message.From.FirstName, message.From.ID, message.Chat.ID)
+		chatID := message.Chat.ID
+		userID := message.From.ID
+		// Проверяем, является ли пользователь новым в этом чате
+		isNewUser, err := b.isNewUserInChat(chatID, userID)
+		if err != nil {
+			log.Printf("Ошибка проверки нового пользователя: %v", err)
+			return
+		}
+		// Если пользователь новый - проверяем капчу
+		if isNewUser {
+			shouldProcess, isCaptchaResponse := b.checkCaptchaRequirement(chatID, userID, message.Text)
+			if !shouldProcess {
+				return
+			}
+			if isCaptchaResponse {
+				// Это ответ на капчу - обрабатываем отдельно
+				b.handleCaptchaResponse(chatID, userID, message.Text)
+				return
+			}
+		}
+	}
 
-	// Проверка на спам перед обработкой команды
+	// Обработка события выхода пользователя из чата
+	if message.LeftChatMember != nil {
+		//b.handleLeftChatMember(message)
+
+	}
+
+	// ==============Проверка на спам перед обработкой команды
 	isSpam, reason, _ := module.IsSpam(message.Text)
 	if isSpam {
 		b.handleSpamMessage(message, reason)
 		return
 	}
 
-	// Проверяем, содержит ли сообщение "спасибо" или "спс"
+	// ==============Проверяем, содержит ли сообщение "спасибо" или "спс"
 	b.checkForThanks(message)
+}
+
+// Проверка необходимости капчи
+func (b *Bot) checkCaptchaRequirement(chatID, userID int64, messageText string) (shouldProcess, isCaptchaResponse bool) {
+	// Проверяем активную капчу
+	activeCaptcha, err := b.captchaManager.HasActiveCaptcha(chatID, userID)
+	if err != nil {
+		log.Printf("Ошибка проверки капчи для user %d: %v", userID, err)
+		return false, false
+	}
+
+	if activeCaptcha != nil {
+		// Пользователь имеет активную капчу
+		// Проверяем, является ли сообщение ответом на капчу (число)
+		if _, err := strconv.Atoi(strings.TrimSpace(messageText)); err == nil {
+			return true, true // Это ответ на капчу
+		}
+
+		// // Отправляем напоминание о капче
+		b.sendCaptchaReminder(chatID, activeCaptcha.Question)
+		return false, false
+	}
+
+	// Проверяем, проходил ли пользователь капчу ранее
+	hasPassed, err := b.captchaManager.HasUserPassedCaptcha(chatID, userID)
+	if err != nil {
+		log.Printf("Ошибка проверки истории капчи: %v", err)
+		return false, false
+	}
+
+	if hasPassed {
+		return true, false
+	}
+
+	// Пользователь не проходил капчу - отправляем новую
+	b.sendNewCaptcha(chatID, userID)
+	return false, false
+}
+
+// Отправка новой капчи
+func (b *Bot) sendNewCaptcha(chatID, userID int64) {
+	text, _, err := b.captchaManager.SendCaptcha(chatID, userID)
+	if err != nil {
+		log.Printf("Ошибка отправки капчи: %v", err)
+		return
+	}
+
+	captchaMsg := fmt.Sprintf(
+		"🔐 Для участия в чате решите простую задачу:\n%s\n\nОтправьте ответ числом.",
+		text,
+	)
+	b.sendMessage(chatID, captchaMsg)
+}
+
+// Напоминание о капче
+func (b *Bot) sendCaptchaReminder(chatID int64, question string) {
+	reminderMsg := fmt.Sprintf(
+		"⏰ У вас есть активная капча: %s = ?\nОтправьте ответ числом.",
+		question,
+	)
+	b.sendMessage(chatID, reminderMsg)
+}
+
+// Обработка ответа на капчу
+func (b *Bot) handleCaptchaResponse(chatID, userID int64, answer string) {
+	isCorrect, err := b.captchaManager.VerifyCaptcha(chatID, userID, answer)
+	if err != nil {
+		b.sendMessage(chatID, fmt.Sprintf("❌ Ошибка проверки: %v", err))
+		return
+	}
+
+	if isCorrect {
+		b.sendMessage(chatID, "✅ Капча решена верно! Теперь вы можете общаться в чате.")
+		// Выполняем отложенные действия
+		b.onUserVerified(chatID, userID)
+	} else {
+		b.sendMessage(chatID, "❌ Неверный ответ. Попробуйте еще раз.")
+	}
+}
+
+// Действия при успешной проверке капчи
+func (b *Bot) onUserVerified(chatID, userID int64) {
+	// Логирование события
+	log.Printf("Пользователь %d прошел капчу в чате %d", userID, chatID)
 }
 
 // CommandHandler обрабатывает команды бота
 func (b *Bot) handleCommand(message *tgbotapi.Message) {
 	switch message.Command() {
+	// case "test":
+	// 	b.handleCaptcha(message)
 	case "start":
 		b.handleStart(message)
 	case "help":
@@ -59,6 +177,13 @@ func (b *Bot) handleCommand(message *tgbotapi.Message) {
 }
 
 // handleStart обрабатывает команду /start
+//
+//	func (b *Bot) handleTest(message *tgbotapi.Message) {
+//		b.sendMessage(message.Chat.ID, "Щас протестируем....")
+//	}
+//
+
+// handleStart обрабатывает команду /start
 func (b *Bot) handleStart(message *tgbotapi.Message) {
 	b.sendMessage(message.Chat.ID, "Привет! Я бот для создания кратких пересказов обсуждений. Используй /summary для получения сводки.")
 }
@@ -70,22 +195,30 @@ func (b *Bot) handleHelp(message *tgbotapi.Message) {
 
 // handlePing обрабатывает команду /ping
 func (b *Bot) handlePing(message *tgbotapi.Message) {
-	commandReceiveTime := time.Now()
-	processingTime := time.Since(commandReceiveTime)
-	messageTime := time.Unix(int64(message.Date), 0)
-	timeDiff := time.Since(messageTime)
+	//только админам
+	userAdmin, _ := b.IsUserAdmin(message.Chat.ID, message.From.ID)
+	if userAdmin {
+		commandReceiveTime := time.Now()
+		processingTime := time.Since(commandReceiveTime)
+		messageTime := time.Unix(int64(message.Date), 0)
+		timeDiff := time.Since(messageTime)
 
-	response := fmt.Sprintf(
-		"🏓 Pong!\n"+
-			"⏱ Время обработки: %d ms\n"+
-			"🕒 Время сервера: %s\n"+
-			"⏳ Задержка сообщения: %s",
-		processingTime.Milliseconds(),
-		time.Now().Format("02.01.2006 15:04:05 MST"),
-		formatDuration(timeDiff),
-	)
-
-	b.sendMessage(message.Chat.ID, response)
+		response := fmt.Sprintf(
+			"🏓 Pong! v%s\n"+
+				"Build: %s\n"+
+				"⏱ Время обработки: %d ms\n"+
+				"🕒 Время: %s\n"+
+				"⏳ Задержка сообщения: %s",
+			Version, BuildDate,
+			processingTime.Milliseconds(),
+			time.Now().Format("02.01.2006 15:04:05 MST"),
+			formatDuration(timeDiff),
+		)
+		b.sendMessage(message.Chat.ID, response)
+	} else {
+		log.Printf("[handlePing] неадмин %s запросил /ping", getUserName(message.From))
+		return
+	}
 }
 
 // handleSummary обрабатывает команду /summary
@@ -269,7 +402,7 @@ func (b *Bot) handleSpamMessage(message *tgbotapi.Message, reason string) {
 
 	// Логируем событие в БД
 	go func(msg *tgbotapi.Message) {
-		err := b.LogIncident(msg.Chat.ID, msg.From.ID, msg.Text, time.Now().Unix())
+		err := b.LogIncident(msg.Chat.ID, msg.From.ID, msg.Text, time.Now().Unix(), reason)
 		if err != nil {
 			log.Printf("Ошибка логирования спама: %v", err)
 		}

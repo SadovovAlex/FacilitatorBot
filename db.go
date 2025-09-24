@@ -10,12 +10,12 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-func (b *Bot) LogIncident(chatID int64, userID int64, text string, timestamp int64) error {
+func (b *Bot) LogIncident(chatID int64, userID int64, text string, timestamp int64, reason string) error {
 	_, err := b.db.Exec(
 		`INSERT INTO incidents
-		(chat_id, user_id, message_text, created_at)
-		VALUES (?, ?, ?, ?)`,
-		chatID, userID, text, time.Unix(timestamp, 0).Format(time.RFC3339),
+		(chat_id, user_id, message_text, created_at, reason)
+		VALUES (?, ?, ?, ?, ?)`,
+		chatID, userID, text, time.Unix(timestamp, 0).Format(time.RFC3339), reason,
 	)
 	return err
 }
@@ -56,6 +56,10 @@ func (b *Bot) initDB() error {
 			        FOREIGN KEY(user_id) REFERENCES users(id)
 			    );
             `,
+		},
+		{
+			name: "add_incidents_reason_column",
+			sql:  `ALTER TABLE incidents ADD COLUMN reason TEXT;`,
 		},
 		{
 			name: "add_messages_table",
@@ -184,6 +188,28 @@ func (b *Bot) initDB() error {
                 PRAGMA foreign_keys=on;
             `,
 		},
+		// капча
+		{
+			name: "add_captchas_table",
+			sql: `
+        CREATE TABLE IF NOT EXISTS captchas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            question TEXT NOT NULL,
+            answer INTEGER NOT NULL,
+            sent_at TIMESTAMP NOT NULL,
+            answered_at TIMESTAMP NULL,
+            is_correct BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_captchas_chat_user ON captchas(chat_id, user_id);
+        CREATE INDEX IF NOT EXISTS idx_captchas_sent_at ON captchas(sent_at);
+        CREATE INDEX IF NOT EXISTS idx_captchas_active ON captchas(chat_id, user_id, answered_at);
+    `,
+		},
 		{
 			name: "create_initial_indexes",
 			sql: `
@@ -265,6 +291,21 @@ func (b *Bot) initDB() error {
 	return nil
 }
 
+func (b *Bot) isNewUserInChat(chatID, userID int64) (bool, error) {
+	// Проверяем по истории сообщений - если у пользователя меньше 5 сообщений в чате, считаем новым
+	query := `
+		SELECT COUNT(*) FROM messages 
+		WHERE chat_id = ? AND user_id = ?
+	`
+	var messageCount int
+	err := b.db.QueryRow(query, chatID, userID).Scan(&messageCount)
+	if err != nil {
+		return false, err
+	}
+
+	return messageCount < 5, nil
+}
+
 // saveChat сохраняет информацию о чате в БД
 func (b *Bot) saveChat(chat *tgbotapi.Chat) error {
 	if chat == nil {
@@ -280,20 +321,20 @@ func (b *Bot) saveChat(chat *tgbotapi.Chat) error {
 }
 
 // saveUser сохраняет информацию о пользователе в БД, 136817688  это сообщения от имени канала
-func (b *Bot) saveUser(user *tgbotapi.User) error {
-	if user == nil {
+func (b *Bot) saveUser(message *tgbotapi.Message) error {
+	if message.From == nil {
 		return nil
 	}
 
-	firstName := user.FirstName
-	if user.ID == 136817688 {
+	firstName := message.From.UserName
+	if message.From.ID == 136817688 {
 		firstName = "Админ-Канала"
 	}
 
 	result, err := b.db.Exec(`
 		INSERT OR IGNORE INTO users (id, username, first_name, last_name) 
 		VALUES (?, ?, ?, ?)`,
-		user.ID, user.UserName, firstName, user.LastName)
+		message.From.ID, message.From.UserName, firstName, message.From.LastName)
 	if err != nil {
 		return err
 	}
@@ -304,7 +345,7 @@ func (b *Bot) saveUser(user *tgbotapi.User) error {
 	}
 
 	if rowsAffected > 0 {
-		fmt.Printf("Saved user: ID=%d, Username=%s, FirstName=%s, LastName=%s", user.ID, user.UserName, user.FirstName, user.LastName)
+		fmt.Printf("Saved user: ID=%d, Username=%s, FirstName=%s, LastName=%s", message.From.ID, message.From.UserName, message.From.FirstName, message.From.LastName)
 	}
 
 	return nil

@@ -49,7 +49,7 @@ func (b *Bot) IsUserAdmin(chatID, userID int64) (bool, error) {
 	// Проверяем, является ли пользователь безусловным админом
 	if allowedAdmins[userID] {
 		username, _ := b.getUserByIDFromDB(userID)
-		log.Printf("[Admin] User %v %d is admin", username, userID)
+		log.Printf("[Admin] User @%v[%d] is admin", username, userID)
 		return true, nil
 	}
 
