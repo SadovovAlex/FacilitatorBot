@@ -48,10 +48,13 @@ func (b *Bot) handleAllMessages(message *tgbotapi.Message) {
 	}
 
 	// ==============Проверка на спам перед обработкой команды
-	isSpam, reason, _ := module.IsSpam(message.Text)
-	if isSpam {
-		b.handleSpamMessage(message, reason)
-		return
+	userAdmin, _ := b.IsUserAdmin(message.Chat.ID, message.From.ID)
+	if userAdmin {
+		isSpam, reason, _ := module.IsSpam(message.Text)
+		if isSpam {
+			b.handleSpamMessage(message, reason)
+			return
+		}
 	}
 
 	// ==============Проверяем, содержит ли сообщение "спасибо" или "спс"
