@@ -18,29 +18,29 @@ func (b *Bot) handleAllMessages(message *tgbotapi.Message) {
 	// ==============Проверяем капчу
 	// Обработка события входа пользователя в чат
 	//
-	{
-		log.Printf("Новый пользователь %s (%d) в чате %d", message.From.FirstName, message.From.ID, message.Chat.ID)
-		chatID := message.Chat.ID
-		userID := message.From.ID
-		// Проверяем, является ли пользователь новым в этом чате
-		isNewUser, err := b.db.IsNewUserInChat(chatID, userID)
-		if err != nil {
-			log.Printf("Ошибка проверки нового пользователя: %v", err)
-			return
-		}
-		// Если пользователь новый - проверяем капчу
-		if isNewUser {
-			shouldProcess, isCaptchaResponse := b.checkCaptchaRequirement(chatID, userID, message.Text)
-			if !shouldProcess {
-				return
-			}
-			if isCaptchaResponse {
-				// Это ответ на капчу - обрабатываем отдельно
-				b.handleCaptchaResponse(chatID, userID, message.Text)
-				return
-			}
-		}
-	}
+	// {
+	// 	log.Printf("Новый пользователь %s (%d) в чате %d", message.From.FirstName, message.From.ID, message.Chat.ID)
+	// 	chatID := message.Chat.ID
+	// 	userID := message.From.ID
+	// 	// Проверяем, является ли пользователь новым в этом чате
+	// 	isNewUser, err := b.db.IsNewUserInChat(chatID, userID)
+	// 	if err != nil {
+	// 		log.Printf("Ошибка проверки нового пользователя: %v", err)
+	// 		return
+	// 	}
+	// 	// Если пользователь новый - проверяем капчу
+	// 	if isNewUser {
+	// 		shouldProcess, isCaptchaResponse := b.checkCaptchaRequirement(chatID, userID, message.Text)
+	// 		if !shouldProcess {
+	// 			return
+	// 		}
+	// 		if isCaptchaResponse {
+	// 			// Это ответ на капчу - обрабатываем отдельно
+	// 			b.handleCaptchaResponse(chatID, userID, message.Text)
+	// 			return
+	// 		}
+	// 	}
+	// }
 
 	// Обработка события выхода пользователя из чата
 	if message.LeftChatMember != nil {

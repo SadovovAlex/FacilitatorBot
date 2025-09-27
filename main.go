@@ -310,6 +310,7 @@ func (b *Bot) Run() {
 func (b *Bot) processAllMessage(message *tgbotapi.Message) {
 	// Пропускаем служебные сообщения и сообщения от каналов
 	if message.Text == "" || message.From == nil {
+		log.Printf("Служебное: %v", message)
 		return
 	}
 
