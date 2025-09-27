@@ -192,7 +192,7 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 				if entity.Type == "mention" {
 					username := text[entity.Offset : entity.Offset+entity.Length]
 					// Здесь нужно получить userID по username из БД
-					user, err := b.getUserByUsername(username[1:]) // Убираем @
+					user, err := b.db.GetUserByUsername(username[1:]) // Убираем @
 					if err == nil && user != nil {
 						thankedUserID = user.ID
 						thankedUsername = user.UserName
@@ -203,7 +203,7 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 	}
 
 	// Сохраняем благодарность
-	err := b.saveThanks(
+	err := b.db.SaveThanks(
 		message.Chat.ID,
 		message.From.ID,
 		thankedUserID,
@@ -233,7 +233,7 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 
 	// 1. Общее количество благодарностей отправителя
 	var userThanksCount int
-	err = b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE from_user_id = ? AND chat_id = ?",
+	err = b.db.GetSQLDB().QueryRow("SELECT COUNT(*) FROM mod_thanks WHERE from_user_id = ? AND chat_id = ?",
 		message.From.ID, message.Chat.ID).Scan(&userThanksCount)
 	if err == nil {
 		fmt.Fprintf(&stats, "Ты сказал спасибо %d раз(а)\n", userThanksCount)
@@ -242,7 +242,7 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 	// Если благодарили конкретного пользователя, показываем его статистику и место в топе
 	if thankedUserID != 0 {
 		var thankedCount int
-		err = b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE to_user_id = ? AND chat_id = ?",
+		err = b.db.GetSQLDB().QueryRow("SELECT COUNT(*) FROM thanks WHERE to_user_id = ? AND chat_id = ?",
 			thankedUserID, message.Chat.ID).Scan(&thankedCount)
 		if err == nil {
 			if thankedUsername != "" {
@@ -253,12 +253,12 @@ func (b *Bot) checkForThanks(message *tgbotapi.Message) {
 
 			// Получаем место в топе получателей благодарностей
 			var rank int
-			err = b.db.QueryRow(`
+			err = b.db.GetSQLDB().QueryRow(`
 			SELECT position FROM (
 				SELECT 
 					to_user_id, 
 					RANK() OVER (ORDER BY COUNT(*) DESC) as position
-				FROM thanks 
+				FROM mod_thanks 
 				WHERE chat_id = ?
 				GROUP BY to_user_id
 			) ranked WHERE to_user_id = ?`,
@@ -348,7 +348,7 @@ func getUserName(user *tgbotapi.User) string {
 // getUserByID получает пользователя по ID из БД
 func (b *Bot) getUserByIDFromDB(userID int64) (*tgbotapi.User, error) {
 	var user tgbotapi.User
-	err := b.db.QueryRow(`
+	err := b.db.GetSQLDB().QueryRow(`
         SELECT id, username, first_name, last_name
         FROM users
         WHERE id = ?`, userID).Scan(

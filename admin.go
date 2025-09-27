@@ -64,7 +64,7 @@ func (b *Bot) IsUserAdmin(chatID, userID int64) (bool, error) {
 	}
 
 	// Если не админ в Telegram, проверяем в БД
-	isDBAdmin, err := b.IsUserAdminInDB(chatID, userID)
+	isDBAdmin, err := b.db.IsUserAdminInDB(chatID, userID)
 	if err != nil {
 		return false, fmt.Errorf("ошибка проверки прав администратора в БД: %v", err)
 	}
@@ -113,7 +113,7 @@ func (b *Bot) handleAIStats(message *tgbotapi.Message) {
 	}
 
 	// Получаем статистику использования токенов
-	stats, err := b.GetChatTokenUsage(message.Chat.ID, 30) // Последние 30 дней
+	stats, err := b.db.GetChatTokenUsage(message.Chat.ID, 30) // Последние 30 дней
 	if err != nil {
 		b.sendMessage(message.Chat.ID, fmt.Sprintf("Ошибка получения статистики: %v", err))
 		return

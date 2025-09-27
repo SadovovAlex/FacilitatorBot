@@ -10,6 +10,7 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
+	"facilitatorbot/db"
 	"facilitatorbot/module"
 )
 
@@ -22,7 +23,7 @@ func (b *Bot) handleAllMessages(message *tgbotapi.Message) {
 		chatID := message.Chat.ID
 		userID := message.From.ID
 		// Проверяем, является ли пользователь новым в этом чате
-		isNewUser, err := b.isNewUserInChat(chatID, userID)
+		isNewUser, err := b.db.IsNewUserInChat(chatID, userID)
 		if err != nil {
 			log.Printf("Ошибка проверки нового пользователя: %v", err)
 			return
@@ -257,7 +258,7 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 		}
 	}
 
-	messages, err := b.getRecentMessages(chatID, count)
+	messages, err := b.db.GetRecentMessages(chatID, count)
 	if err != nil {
 		log.Printf("[handleSummary] Ошибка получения сообщений: %v", err)
 		b.sendMessage(chatID, "Не удалось получить историю сообщений.")
@@ -265,7 +266,7 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 	}
 
 	if len(messages) == 0 {
-		message := fmt.Sprintf("Последние %v часов, я похоже спал =)", CHECK_HOURS*-1)
+		message := fmt.Sprintf("Последние %v часов, я похоже спал =)", db.CHECK_HOURS*-1)
 		log.Println(message)
 		b.sendMessage(chatID, message)
 		return
@@ -325,7 +326,7 @@ func (b *Bot) handleAISummary(message *tgbotapi.Message, count int) {
 
 // handleClear обрабатывает команду /clear
 func (b *Bot) handleClear(message *tgbotapi.Message) {
-	b.DeleteUserContext(message.Chat.ID, message.From.ID)
+	b.db.DeleteUserContext(message.Chat.ID, message.From.ID)
 }
 
 // Обработка спам-сообщений
@@ -409,7 +410,7 @@ func (b *Bot) handleSpamMessage(message *tgbotapi.Message, reason string) {
 
 	// Логируем событие в БД
 	go func(msg *tgbotapi.Message) {
-		err := b.LogIncident(msg.Chat.ID, msg.From.ID, msg.Text, time.Now().Unix(), reason)
+		err := b.db.LogIncident(msg.Chat.ID, msg.From.ID, msg.Text, time.Now().Unix(), reason)
 		if err != nil {
 			log.Printf("Ошибка логирования спама: %v", err)
 		}
@@ -493,7 +494,7 @@ func (b *Bot) handleGenImage(message *tgbotapi.Message) {
 func (b *Bot) handleTopic(message *tgbotapi.Message) {
 	chatID := message.Chat.ID
 
-	messages, err := b.getRecentMessages(chatID, -1)
+	messages, err := b.db.GetRecentMessages(chatID, -1)
 	if err != nil {
 		log.Printf("Ошибка получения сообщений: %v", err)
 		b.sendMessage(chatID, "Не удалось получить историю сообщений.")
@@ -535,7 +536,7 @@ func (b *Bot) handleAnekdot(message *tgbotapi.Message) {
 		return
 	}
 
-	messages, err := b.getRecentMessages(chatID, -1)
+	messages, err := b.db.GetRecentMessages(chatID, -1)
 	if err != nil {
 		log.Printf("Ошибка получения сообщений: %v", err)
 		b.sendMessage(chatID, "Не удалось получить историю сообщений.")
@@ -584,16 +585,16 @@ func (b *Bot) handleStats(message *tgbotapi.Message) {
 
 	// 2. Статистика по благодарностям
 	var totalThanks int
-	err := b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE chat_id = ?", chatID).Scan(&totalThanks)
+	err := b.db.GetSQLDB().QueryRow("SELECT COUNT(*) FROM mod_thanks WHERE chat_id = ?", chatID).Scan(&totalThanks)
 	if err == nil {
 		fmt.Fprintf(&statsMsg, "🙏 Всего благодарностей: %d\n\n", totalThanks)
 	}
 
 	// 3. Топ получателей благодарностей
 	fmt.Fprintf(&statsMsg, "🏆 Топ-5 самых благодарных пользователей:\n")
-	rows, err := b.db.Query(`
+	rows, err := b.db.GetSQLDB().Query(`
 			SELECT u.username, COUNT(*) as thanks_count
-			FROM thanks t
+			FROM mod_thanks t
 			JOIN users u ON t.from_user_id = u.id
 			WHERE t.chat_id = ?
 			GROUP BY u.id
@@ -612,9 +613,9 @@ func (b *Bot) handleStats(message *tgbotapi.Message) {
 
 	// 4. Топ получателей благодарностей
 	fmt.Fprintf(&statsMsg, "\n🏆 Топ-5 самых благодаримых пользователей:\n")
-	rows, err = b.db.Query(`
+	rows, err = b.db.GetSQLDB().Query(`
 			SELECT u.username, COUNT(*) as thanks_count
-			FROM thanks t
+			FROM mod_thanks t
 			JOIN users u ON t.to_user_id = u.id
 			WHERE t.chat_id = ?
 			GROUP BY u.id

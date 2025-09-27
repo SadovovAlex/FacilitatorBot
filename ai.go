@@ -15,6 +15,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"facilitatorbot/db"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -201,7 +203,7 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgb
 
 		// // После получения ответа от AI сохраняем информацию о токенах
 		if response.Usage.TotalTokens > 0 {
-			record := BillingRecord{
+			record := db.BillingRecord{
 				UserID:           message.From.ID,
 				ChatID:           message.Chat.ID,
 				Timestamp:        time.Now().Unix(),
@@ -212,7 +214,7 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgb
 				Cost:             calculateCost(response.Model, response.Usage.TotalTokens),
 			}
 
-			if err := b.SaveBillingRecord(record); err != nil {
+			if err := b.db.SaveBillingRecord(record); err != nil {
 				log.Printf("Ошибка биллинга: %v", err)
 			}
 		}

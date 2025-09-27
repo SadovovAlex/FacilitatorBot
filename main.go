@@ -3,7 +3,6 @@
 package main
 
 import (
-	"database/sql"
 	"fmt"
 	"io"
 	"log"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"facilitatorbot/db"
 	"facilitatorbot/module"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -22,11 +22,9 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-const CHECK_HOURS = -24        // hours get DB messages
 const AI_REQUEST_TIMEOUT = 180 // seconds for AI request
 const LIMIT_MSG = 100          //default лимит сообщений запрощенных для /summary
 const IGNORE_OLD_MSG_MIN = 15  // игнорируем старые сообщение если не прочитали, но пишем в БД все =)
-// log
 const LOG_FILENAME = "tg_bot.log"
 const LOG_DIR = "logs"
 
@@ -49,7 +47,6 @@ type Config struct {
 	ContextRetentionDays int                //удаление контекста диалога с пользователем из БД
 	TokenCosts           map[string]float64 // стоимость токенов для разных моделей
 	AIImageURL           string             // URL для генерации изображений
-
 }
 
 // Bot структура основного бота
@@ -57,45 +54,10 @@ type Bot struct {
 	config         Config
 	tgBot          *tgbotapi.BotAPI
 	httpClient     *http.Client
-	db             *sql.DB
+	db             *db.DB
 	captchaManager *module.CaptchaManager
 	//chatHistories map[int64][]ChatMessage // История сообщений по чатам
 	lastSummary map[int64]time.Time // Время последней сводки по чатам
-}
-
-// ContextMessage представляет сообщение в контексте диалога
-type ContextMessage struct {
-	Role      string // "user" или "assistant"
-	Content   string
-	Timestamp int64
-}
-
-// DB структуры
-type DBChat struct {
-	ID       int64
-	Title    string
-	Type     string
-	Username string
-}
-
-type DBUser struct {
-	ID        int64
-	Username  string
-	FirstName string
-	LastName  string
-}
-
-// DBMessage структура для хранения сообщений из БД
-type DBMessage struct {
-	ID            int
-	ChatID        int64
-	UserID        int64
-	UserFirstName string
-	UserLastName  string
-	Text          string
-	Timestamp     int64
-	Username      string
-	ChatTitle     string
 }
 
 // LocalLLMRequest структура запроса к локальной LLM
@@ -135,18 +97,6 @@ type LocalLLMResponse struct {
 		} `json:"prompt_tokens_details"`
 		TotalTokens int `json:"total_tokens"`
 	} `json:"usage"`
-}
-
-// BillingRecord представляет запись о использовании токенов AI
-type BillingRecord struct {
-	UserID           int64
-	ChatID           int64
-	Timestamp        int64
-	Model            string
-	PromptTokens     int
-	CompletionTokens int
-	TotalTokens      int
-	Cost             float64
 }
 
 func main() {
@@ -218,7 +168,7 @@ func main() {
 
 	// Инициализация БД
 	log.Printf("DB init...")
-	err = bot.initDB()
+	err = bot.db.Init()
 	if err != nil {
 		log.Fatalf("Ошибка инициализации DB: %v", err)
 	}
@@ -235,7 +185,7 @@ func main() {
 
 // initializeCaptchaManager инициализирует менеджер капчи
 func (b *Bot) initializeCaptchaManager() {
-	b.captchaManager = module.NewCaptchaManager(b.db)
+	b.captchaManager = module.NewCaptchaManager(b.db.GetSQLDB())
 	log.Printf("Менеджер капчи инициализирован")
 }
 
@@ -279,16 +229,16 @@ func NewBot(config Config) (*Bot, error) {
 		return nil, fmt.Errorf("ошибка создания Telegram бота: %v", err)
 	}
 
-	db, err := sql.Open("sqlite3", config.DBPath)
+	dbInstance, err := db.NewDB(config.DBPath, config.HistoryDays, config.ContextRetentionDays)
 	if err != nil {
-		return nil, fmt.Errorf("ошибка открытия базы данных: %v", err)
+		return nil, fmt.Errorf("ошибка создания DB: %v", err)
 	}
 
 	return &Bot{
 		config:      config,
 		tgBot:       tgBot,
 		httpClient:  &http.Client{Timeout: AI_REQUEST_TIMEOUT * time.Second},
-		db:          db,
+		db:          dbInstance,
 		lastSummary: make(map[int64]time.Time),
 	}, nil
 }
@@ -315,8 +265,8 @@ func (b *Bot) Run() {
 	updates := b.tgBot.GetUpdatesChan(u)
 
 	// Очистка старых сообщений в БД
-	go b.DeleteOldMessages()
-	go b.cleanupOldContext()
+	go b.db.DeleteOldMessages()
+	go b.db.CleanupOldContext()
 
 	for update := range updates {
 		if update.Message != nil {
@@ -419,6 +369,53 @@ func (b *Bot) processAllMessage(message *tgbotapi.Message) {
 
 }
 
+func (b *Bot) storeMessage(message *tgbotapi.Message) {
+	//chatID := message.Chat.ID
+	userID := message.From.ID
+
+	// Логируем ID чата и пользователя
+	//log.Printf("[storeMessage] от %d в чате %d",  userID, chatID)
+
+	// Пропускаем служебные пустые сообщения
+	if message.Text == "" {
+		// Проверяем наличие подписи (для медиа-сообщений)
+		if message.Caption == "" {
+			return
+		}
+	}
+
+	// Используем текст или подпись (для медиа-сообщений)
+	text := message.Text
+	if text == "" && message.Caption != "" {
+		text = message.Caption
+	}
+
+	// Сохраняем чат и пользователя в БД
+	err := b.db.SaveChat(message.Chat)
+	if err != nil {
+		log.Printf("Ошибка сохранения чата: %v", err)
+	}
+
+	if message.From != nil {
+		err = b.db.SaveUser(message)
+		if err != nil {
+			log.Printf("Ошибка сохранения пользователя: %v", err)
+		}
+	}
+
+	// Сохраняем сообщение в БД
+	err = b.db.SaveMessage(
+		message.Chat.ID,
+		userID,
+		text,
+		int64(message.Date),
+	)
+	if err != nil {
+		log.Printf("Ошибка сохранения сообщения: %v", err)
+	}
+
+}
+
 // handleBotMention обрабатывает сообщения, адресованные боту
 func (b *Bot) handleBotMention(message *tgbotapi.Message) {
 
@@ -428,7 +425,7 @@ func (b *Bot) handleBotMention(message *tgbotapi.Message) {
 	switch {
 	case strings.Contains(strings.ToLower(cleanText), "забудь"):
 		log.Println("Удаляю контекст")
-		err := b.DeleteUserContext(message.Chat.ID, message.From.ID)
+		err := b.db.DeleteUserContext(message.Chat.ID, message.From.ID)
 		if err != nil {
 			log.Printf("Ошибка удаления контекста: %v", err)
 			b.sendMessage(message.Chat.ID, "Не удалось очистить контекст")
@@ -462,53 +459,6 @@ func (b *Bot) handleBotMention(message *tgbotapi.Message) {
 	}
 }
 
-func (b *Bot) storeMessage(message *tgbotapi.Message) {
-	//chatID := message.Chat.ID
-	userID := message.From.ID
-
-	// Логируем ID чата и пользователя
-	//log.Printf("[storeMessage] от %d в чате %d",  userID, chatID)
-
-	// Пропускаем служебные пустые сообщения
-	if message.Text == "" {
-		// Проверяем наличие подписи (для медиа-сообщений)
-		if message.Caption == "" {
-			return
-		}
-	}
-
-	// Используем текст или подпись (для медиа-сообщений)
-	text := message.Text
-	if text == "" && message.Caption != "" {
-		text = message.Caption
-	}
-
-	// Сохраняем чат и пользователя в БД
-	err := b.saveChat(message.Chat)
-	if err != nil {
-		log.Printf("Ошибка сохранения чата: %v", err)
-	}
-
-	if message.From != nil {
-		err = b.saveUser(message)
-		if err != nil {
-			log.Printf("Ошибка сохранения пользователя: %v", err)
-		}
-	}
-
-	// Сохраняем сообщение в БД
-	err = b.saveMessage(
-		message.Chat.ID,
-		userID,
-		text,
-		int64(message.Date),
-	)
-	if err != nil {
-		log.Printf("Ошибка сохранения сообщения: %v", err)
-	}
-
-}
-
 // handleReplyToBot обрабатывает ответы на сообщения бота
 func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
 	chatID := message.Chat.ID
@@ -519,14 +469,14 @@ func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
 	defer close(stopTyping)
 
 	// Получаем системный промпт пользователя
-	aiInfo, err := b.GetUserAIInfo(message.From.ID)
+	aiInfo, err := b.db.GetUserAIInfo(message.From.ID)
 	if err != nil {
 		log.Printf("Ошибка получения AI info: %v", err)
 		aiInfo = "" // Используем пустой промпт по умолчанию
 	}
 
 	// Сохраняем контекст пользователя
-	err = b.saveContext(
+	err = b.db.SaveContext(
 		message.Chat.ID,
 		message.From.ID,
 		"user",
@@ -538,7 +488,7 @@ func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
 	}
 
 	// Получаем историю диалога (последние 30 сообщений или за последние 24 часа)
-	context, err := b.getConversationContext(
+	context, err := b.db.GetConversationContext(
 		message.Chat.ID,
 		message.From.ID,
 		b.config.ContextMessageLimit, // например 30
@@ -551,7 +501,7 @@ func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
 	// Обрабатываем сообщение с учетом системного промпта пользователя
 	if aiInfo != "" {
 		// Добавляем системный промпт в начало контекста
-		context = append([]ContextMessage{{
+		context = append([]db.ContextMessage{{
 			Role:      "system",
 			Content:   aiInfo,
 			Timestamp: message.Time().Unix(),
@@ -587,7 +537,7 @@ func (b *Bot) handleReplyToBot(message *tgbotapi.Message) {
 	}
 
 	// Сохраняем ответ бота в контекст
-	err = b.saveContext(
+	err = b.db.SaveContext(
 		message.Chat.ID,
 		message.From.ID,
 		"assistant",

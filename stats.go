@@ -83,7 +83,7 @@ package main
 
 // 	// 2. Статистика по благодарностям
 // 	var totalThanks int
-// 	err = b.db.QueryRow("SELECT COUNT(*) FROM thanks WHERE chat_id = ?", chatID).Scan(&totalThanks)
+// 	err = b.db.QueryRow("SELECT COUNT(*) FROM mod_thanks WHERE chat_id = ?", chatID).Scan(&totalThanks)
 // 	if err == nil {
 // 		fmt.Fprintf(&statsMsg, "🙏 Всего благодарностей: %d\n\n", totalThanks)
 // 	}
@@ -92,7 +92,7 @@ package main
 // 	fmt.Fprintf(&statsMsg, "🏆 Топ-5 самых благодарных пользователей:\n")
 // 	rows, err := b.db.Query(`
 //         SELECT u.username, COUNT(*) as thanks_count
-//         FROM thanks t
+//         FROM mod_thanks t
 //         JOIN users u ON t.from_user_id = u.id
 //         WHERE t.chat_id = ?
 //         GROUP BY t.from_user_id
@@ -120,7 +120,7 @@ package main
 // 	fmt.Fprintf(&statsMsg, "\n💖 Топ-5 самых ценных участников:\n")
 // 	rows, err = b.db.Query(`
 //         SELECT u.username, COUNT(*) as thanks_received
-//         FROM thanks t
+//         FROM mod_thanks t
 //         JOIN users u ON t.to_user_id = u.id
 //         WHERE t.chat_id = ? AND t.to_user_id != 0
 //         GROUP BY t.to_user_id
@@ -148,7 +148,7 @@ package main
 // 	fmt.Fprintf(&statsMsg, "\n🆕 Последние благодарности:\n")
 // 	rows, err = b.db.Query(`
 //         SELECT u1.username, u2.username, t.text
-//         FROM thanks t
+//         FROM mod_thanks t
 //         LEFT JOIN users u1 ON t.from_user_id = u1.id
 //         LEFT JOIN users u2 ON t.to_user_id = u2.id
 //         WHERE t.chat_id = ?
@@ -177,7 +177,7 @@ package main
 // 	var lastDayThanks int
 // 	err = b.db.QueryRow(`
 //         SELECT COUNT(*)
-//         FROM thanks
+//         FROM mod_thanks
 //         WHERE chat_id = ? AND timestamp >= ?
 //     `, chatID, dayAgo).Scan(&lastDayThanks)
 // 	if err == nil {
