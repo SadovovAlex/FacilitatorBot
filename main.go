@@ -18,8 +18,10 @@ import (
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	godotenv "github.com/joho/godotenv"
-	_ "github.com/mattn/go-sqlite3"
+
+	//_ "github.com/mattn/go-sqlite3"
 	"gopkg.in/natefinch/lumberjack.v2"
+	_ "modernc.org/sqlite"
 )
 
 const AI_REQUEST_TIMEOUT = 180 // seconds for AI request

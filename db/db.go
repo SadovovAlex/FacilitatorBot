@@ -18,7 +18,8 @@ type DB struct {
 }
 
 func NewDB(path string, historyDays, contextRetentionDays int) (*DB, error) {
-	sqlDB, err := sql.Open("sqlite3", path)
+	//sqlDB, err := sql.Open("sqlite3", path)
+	sqlDB, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка открытия базы данных: %v", err)
 	}
