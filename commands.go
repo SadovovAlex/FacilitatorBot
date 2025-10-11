@@ -11,7 +11,6 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"facilitatorbot/db"
-	"facilitatorbot/module"
 )
 
 func (b *Bot) handleAllMessages(message *tgbotapi.Message) {
@@ -48,15 +47,15 @@ func (b *Bot) handleAllMessages(message *tgbotapi.Message) {
 
 	}
 
-	// ==============Проверка на спам перед обработкой команды
-	userAdmin, _ := b.IsUserAdmin(message.Chat.ID, message.From.ID)
-	if userAdmin {
-		isSpam, reason, _ := module.IsSpam(message.Text)
-		if isSpam {
-			b.handleSpamMessage(message, reason)
-			return
-		}
-	}
+	// // ==============Проверка на спам перед обработкой команды
+	// userAdmin, _ := b.IsUserAdmin(message.Chat.ID, message.From.ID)
+	// if !userAdmin {
+	// 	isSpam, reason, _ := module.IsSpam(message.Text)
+	// 	if isSpam {
+	// 		b.handleSpamMessage(message, reason)
+	// 		return
+	// 	}
+	// }
 
 	// ==============Проверяем, содержит ли сообщение "спасибо" или "спс"
 	b.checkForThanks(message)
