@@ -25,7 +25,7 @@ import (
 )
 
 const AI_REQUEST_TIMEOUT = 180 // seconds for AI request
-const LIMIT_MSG = 100          //default лимит сообщений запрощенных для /summary
+const LIMIT_MSG = 500          //default лимит сообщений запрощенных для /summary
 const IGNORE_OLD_MSG_MIN = 15  // игнорируем старые сообщение если не прочитали, но пишем в БД все =)
 const LOG_FILENAME = "tg_bot.log"
 const LOG_DIR = "logs"
