@@ -164,22 +164,30 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgb
 			time.Sleep(baseDelay * time.Duration(2<<uint(attempt)))
 			continue
 		}
-		defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
-			log.Printf("[generateAiRequest] Неверный статус код (попытка %d): %d", attempt+1, resp.StatusCode)
+		// Создаем ограниченный Reader для предотвращения утечки памяти
+		limitReader := &io.LimitedReader{
+			R: resp.Body,
+			N: 10 * 1024 * 1024, // Ограничиваем чтение 10MB
+		}
+
+		var response LocalLLMResponse
+		if err := json.NewDecoder(limitReader).Decode(&response); err != nil {
+			resp.Body.Close()
+			log.Printf("[generateAiRequest] Ошибка декодирования ответа (попытка %d): %v", attempt+1, err)
 			if attempt == maxRetries-1 {
-				return "", fmt.Errorf("неверный статус код после %d попыток: %d", maxRetries, resp.StatusCode)
+				return "", fmt.Errorf("ошибка декодирования ответа после %d попыток: %v", maxRetries, err)
 			}
 			time.Sleep(baseDelay * time.Duration(2<<uint(attempt)))
 			continue
 		}
 
-		var response LocalLLMResponse
-		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-			log.Printf("[generateAiRequest] Ошибка декодирования ответа (попытка %d): %v", attempt+1, err)
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("[generateAiRequest] Неверный статус код (попытка %d): %d", attempt+1, resp.StatusCode)
 			if attempt == maxRetries-1 {
-				return "", fmt.Errorf("ошибка декодирования ответа после %d попыток: %v", maxRetries, err)
+				return "", fmt.Errorf("неверный статус код после %d попыток: %d", maxRetries, resp.StatusCode)
 			}
 			time.Sleep(baseDelay * time.Duration(2<<uint(attempt)))
 			continue
@@ -201,7 +209,120 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgb
 			summary = summary[:idx]
 		}
 
-		// // После получения ответа от AI сохраняем информацию о токенах
+		// После получения ответа от AI сохраняем информацию о токенах
+		if response.Usage.TotalTokens > 0 {
+			record := db.BillingRecord{
+				UserID:           message.From.ID,
+				ChatID:           message.Chat.ID,
+				Timestamp:        time.Now().Unix(),
+				Model:            response.Model,
+				PromptTokens:     response.Usage.PromptTokens,
+				CompletionTokens: response.Usage.CompletionTokens,
+				TotalTokens:      response.Usage.TotalTokens,
+				Cost:             calculateCost(response.Model, response.Usage.TotalTokens),
+			}
+
+			if err := b.db.SaveBillingRecord(record); err != nil {
+				log.Printf("Ошибка биллинга: %v", err)
+			}
+		}
+
+		return strings.TrimSpace(summary), nil
+	}
+
+	return "", fmt.Errorf("все %d попытки завершились неудачей", maxRetries)
+}
+
+// generateAiRequest улучшенная версия с проверкой размера ответа
+func (b *Bot) generateAiRequestV2(systemPrompt string, prompt string, message *tgbotapi.Message) (string, error) {
+	// Логируем параметры запроса
+	log.Printf("[generateAiRequest] Начало запроса к AI. ChatID: %d, Model: %s", message.Chat.ID, b.config.AiModelName)
+	log.Printf("[generateAiRequest] System prompt: %s", systemPrompt)
+	log.Printf("[generateAiRequest] User prompt[%d]: %v", len(prompt), b.truncateText(prompt, 256))
+
+	request := LocalLLMRequest{
+		Model: b.config.AiModelName,
+		Messages: []LocalLLMMessage{
+			{
+				Role:    "system",
+				Content: systemPrompt,
+			},
+			{
+				Role:    "user",
+				Content: prompt,
+			},
+		},
+		Temperature: 0.7,
+		MaxTokens:   16000,
+	}
+
+	jsonData, err := json.Marshal(request)
+	if err != nil {
+		return "", fmt.Errorf("ошибка маршалинга запроса: %v", err)
+	}
+
+	// Retry logic with exponential backoff
+	const maxRetries = 3
+	baseDelay := 60000 * time.Millisecond
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		// Логируем отправку запроса
+		log.Printf("[generateAiRequest] Попытка %d/%d. Отправка запроса к %s", attempt+1, maxRetries, b.config.LocalLLMUrl)
+
+		resp, err := b.httpClient.Post(b.config.LocalLLMUrl, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			log.Printf("[generateAiRequest] Ошибка HTTP запроса (попытка %d): %v", attempt+1, err)
+			if attempt == maxRetries-1 {
+				return "", fmt.Errorf("ошибка HTTP запроса после %d попыток: %v", maxRetries, err)
+			}
+			time.Sleep(baseDelay * time.Duration(2<<uint(attempt)))
+			continue
+		}
+
+		// Создаем ограниченный Reader для предотвращения утечки памяти
+		limitReader := &io.LimitedReader{
+			R: resp.Body,
+			N: 10 * 1024 * 1024, // Ограничиваем чтение 10MB
+		}
+
+		var response LocalLLMResponse
+		if err := json.NewDecoder(limitReader).Decode(&response); err != nil {
+			resp.Body.Close()
+			log.Printf("[generateAiRequest] Ошибка декодирования ответа (попытка %d): %v", attempt+1, err)
+			if attempt == maxRetries-1 {
+				return "", fmt.Errorf("ошибка декодирования ответа после %d попыток: %v", maxRetries, err)
+			}
+			time.Sleep(baseDelay * time.Duration(2<<uint(attempt)))
+			continue
+		}
+
+		resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("[generateAiRequest] Неверный статус код (попытка %d): %d", attempt+1, resp.StatusCode)
+			if attempt == maxRetries-1 {
+				return "", fmt.Errorf("неверный статус код после %d попыток: %d", maxRetries, resp.StatusCode)
+			}
+			time.Sleep(baseDelay * time.Duration(2<<uint(attempt)))
+			continue
+		}
+
+		if len(response.Choices) == 0 {
+			log.Printf("[generateAiRequest] Пустой ответ от LLM (попытка %d)", attempt+1)
+			if attempt == maxRetries-1 {
+				return "", fmt.Errorf("пустой ответ от LLM после %d попыток", maxRetries)
+			}
+			time.Sleep(baseDelay * time.Duration(2<<uint(attempt)))
+			continue
+		}
+
+		// Успешный ответ
+		log.Printf("[generateAiRequest] Успешный ответ получен (попытка %d)", attempt+1)
+		summary := response.Choices[0].Message.Content
+		if idx := strings.Index(summary, "--"); idx != -1 {
+			summary = summary[:idx]
+		}
+
+		// После получения ответа от AI сохраняем информацию о токенах
 		if response.Usage.TotalTokens > 0 {
 			record := db.BillingRecord{
 				UserID:           message.From.ID,

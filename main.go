@@ -239,7 +239,7 @@ func NewBot(config Config) (*Bot, error) {
 	return &Bot{
 		config:      config,
 		tgBot:       tgBot,
-		httpClient:  &http.Client{Timeout: AI_REQUEST_TIMEOUT * time.Second},
+		httpClient:  &http.Client{Timeout: AI_REQUEST_TIMEOUT * time.Second, Transport: &http.Transport{MaxIdleConns: 10, IdleConnTimeout: 30 * time.Second}},
 		db:          dbInstance,
 		lastSummary: make(map[int64]time.Time),
 	}, nil
@@ -261,52 +261,113 @@ func (b *Bot) Run() {
 		log.Printf("Ошибка отправки сообщения о запуске:%v", err)
 	}
 
-	// Основной цикл обработки обновлений
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-	updates := b.tgBot.GetUpdatesChan(u)
+	// Основной цикл обработки обновлений с реконнектом
+	for {
+		if err := b.runWithReconnect(); err != nil {
+			log.Printf("Ошибка в основном цикле: %v. Повторная попытка через 5 секунд...", err)
+			time.Sleep(5 * time.Second)
+		}
+	}
+}
+
+// runWithReconnect запускает основной цикл с возможностью реконнекта
+func (b *Bot) runWithReconnect() error {
+	// Проверка доступности Telegram API
+	if err := b.checkTelegramAPI(); err != nil {
+		return fmt.Errorf("Telegram API недоступен: %w", err)
+	}
 
 	// Очистка старых сообщений в БД
 	go b.db.DeleteOldMessages()
 	go b.db.CleanupOldContext()
 
-	for update := range updates {
-		if update.Message != nil {
-			// Логирование входящего сообщения (сокращенная версия)
-			logMsg := fmt.Sprintf("[Run()] Тип: %s", getMessageType(update.Message))
+	// Основной цикл обработки обновлений
+	u := tgbotapi.NewUpdate(0)
+	u.Timeout = 60
+	updates := b.tgBot.GetUpdatesChan(u)
 
-			if update.Message.From != nil {
-				logMsg += fmt.Sprintf("%s[%v] ", getUserName(update.Message.From), update.Message.From.ID)
+	// Таймер для контроля времени бездействия
+	idleTimer := time.NewTimer(5 * time.Minute)
+	defer idleTimer.Stop()
+
+	for {
+		select {
+		case update, ok := <-updates:
+			// Сбрасываем таймер бездействия
+			if !idleTimer.Stop() {
+				<-idleTimer.C
+			}
+			idleTimer.Reset(5 * time.Minute)
+
+			if !ok {
+				return fmt.Errorf("канал обновлений закрыт")
 			}
 
-			if update.Message.Chat != nil {
-				logMsg += fmt.Sprintf("в %s(%d) ", getChatTitle(update.Message), update.Message.Chat.ID)
-			}
-
-			// Добавляем либо текст, либо подпись, либо отметку о медиа
-			switch {
-			case update.Message.Text != "":
-				text := update.Message.Text
-				if len(text) > 50 {
-					text = text[:50] + "..."
+			if update.Message != nil {
+				// Проверка размера сообщения
+				if len(update.Message.Text) > 4096 {
+					log.Printf("[Run()] Сообщение слишком большое: %d символов", len(update.Message.Text))
+					continue
 				}
-				logMsg += fmt.Sprintf("- %q", text)
-			case update.Message.Caption != "":
-				caption := update.Message.Caption
-				if len(caption) > 50 {
-					caption = caption[:50] + "..."
+
+				// Логирование входящего сообщения (сокращенная версия)
+				logMsg := fmt.Sprintf("[Run()] Тип: %s", getMessageType(update.Message))
+
+				if update.Message.From != nil {
+					logMsg += fmt.Sprintf("%s[%v] ", getUserName(update.Message.From), update.Message.From.ID)
 				}
-				logMsg += fmt.Sprintf("- [подпись] %q", caption)
-			default:
-				logMsg += "- [медиа]"
+
+				if update.Message.Chat != nil {
+					logMsg += fmt.Sprintf("в %s(%d) ", getChatTitle(update.Message), update.Message.Chat.ID)
+				}
+
+				// Добавляем либо текст, либо подпись, либо отметку о медиа
+				switch {
+				case update.Message.Text != "":
+					text := update.Message.Text
+					if len(text) > 50 {
+						text = text[:50] + "..."
+					}
+					logMsg += fmt.Sprintf("- %q", text)
+				case update.Message.Caption != "":
+					caption := update.Message.Caption
+					if len(caption) > 50 {
+						caption = caption[:50] + "..."
+					}
+					logMsg += fmt.Sprintf("- [подпись] %q", caption)
+				default:
+					logMsg += "- [медиа]"
+				}
+
+				log.Println(logMsg)
+
+				// Обработка сообщения
+				b.processAllMessage(update.Message)
 			}
 
-			log.Println(logMsg)
+		case <-idleTimer.C:
+			// Таймаут бездействия - перезапускаем соединение
+			log.Println("[Run()] Таймаут бездействия, перезапуск соединения...")
+			return fmt.Errorf("таймаут бездействия")
 
-			// Обработка сообщения
-			b.processAllMessage(update.Message)
+		case <-time.After(10 * time.Minute):
+			// Периодическая проверка соединения
+			log.Println("[Run()] Периодическая проверка соединения...")
+			if err := b.checkTelegramAPI(); err != nil {
+				return fmt.Errorf("соединение с Telegram потеряно: %w", err)
+			}
 		}
 	}
+}
+
+// checkTelegramAPI проверяет доступность Telegram API
+func (b *Bot) checkTelegramAPI() error {
+	// Пытаемся получить информацию о боте
+	_, err := b.tgBot.GetMe()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (b *Bot) processAllMessage(message *tgbotapi.Message) {
@@ -336,6 +397,12 @@ func (b *Bot) processAllMessage(message *tgbotapi.Message) {
 	messageTime := time.Unix(int64(message.Date), 0)
 	if time.Since(messageTime) > IGNORE_OLD_MSG_MIN*time.Minute {
 		log.Printf("[processMessage] Old msg от %v в чате %v. Возраст: %v", getUserName(message.From), getChatTitle(message), time.Since(messageTime))
+		return
+	}
+
+	// Проверка размера сообщения
+	if len(message.Text) > 4096 {
+		log.Printf("[processMessage] Сообщение слишком большое: %d символов", len(message.Text))
 		return
 	}
 
