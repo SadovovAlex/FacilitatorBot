@@ -185,6 +185,14 @@ func (b *Bot) generateAiRequest(systemPrompt string, prompt string, message *tgb
 		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			// Читаем тело ответа для 400 ошибки
+			if resp.StatusCode == http.StatusBadRequest {
+				body, err := io.ReadAll(resp.Body)
+				if err == nil {
+					log.Printf("[generateAiRequest] Тело ответа при 400 ошибке (попытка %d): %s", attempt+1, string(body))
+				}
+			}
+			resp.Body.Close()
 			log.Printf("[generateAiRequest] Неверный статус код (попытка %d): %d", attempt+1, resp.StatusCode)
 			if attempt == maxRetries-1 {
 				return "", fmt.Errorf("неверный статус код после %d попыток: %d", maxRetries, resp.StatusCode)
@@ -298,6 +306,14 @@ func (b *Bot) generateAiRequestV2(systemPrompt string, prompt string, message *t
 		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
+			// Читаем тело ответа для 400 ошибки
+			if resp.StatusCode == http.StatusBadRequest {
+				body, err := io.ReadAll(resp.Body)
+				if err == nil {
+					log.Printf("[generateAiRequest] Тело ответа при 400 ошибке (попытка %d): %s", attempt+1, string(body))
+				}
+			}
+			resp.Body.Close()
 			log.Printf("[generateAiRequest] Неверный статус код (попытка %d): %d", attempt+1, resp.StatusCode)
 			if attempt == maxRetries-1 {
 				return "", fmt.Errorf("неверный статус код после %d попыток: %d", maxRetries, resp.StatusCode)
